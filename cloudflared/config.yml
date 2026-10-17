@@ -1,0 +1,6 @@
+tunnel: 4f4340bf-97a1-4d17-8d8c-af5fab8fac02
+
+ingress:
+  - hostname: stpr-test.3underscoren.work
+    service: http://nginx:3000
+  - service: http_status:404

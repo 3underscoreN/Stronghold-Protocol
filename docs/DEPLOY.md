@@ -253,6 +253,21 @@ docker run -d --name stronghold -p 3000:3000 --restart unless-stopped \
   -v "$PWD/public/assets:/app/public/assets:ro" stronghold-protocol
 ```
 
+**Docker Compose + Cloudflare Tunnel + Google 登录（OAuth2 Proxy）**：`docker-compose.yml` 中的 cloudflared 将公开 HTTPS 流量转发到 Nginx；Nginx 用 `auth_request` 保护页面和 `/ws`，OAuth2 Proxy 只在 Compose 内网提供服务，不单独发布端口。先在 Cloudflare 建立一个 locally-managed Tunnel，并在仓库根目录的 `cloudflared/` 保存其凭据 JSON，命名为 `credentials.json`。把 `cloudflared/config.yml` 中的 tunnel UUID 和 hostname 换成该 Tunnel 的 UUID 与你的域名；UUID 必须和凭据文件对应。将该 hostname 路由到 Tunnel（例如 `cloudflared tunnel route dns <Tunnel名称> game.example.com`）。凭据文件已列入 `.gitignore`，不要提交。
+
+随后在 Google Cloud 配置 OAuth 同意屏幕，并创建类型为 **Web application** 的 OAuth 客户端；把公开 HTTPS 域名下的 `https://game.example.com/oauth2/callback` 配为授权重定向 URI。若同意屏幕仍处于测试状态，也要把允许登录的账号加入 Google 的测试用户。
+
+在服务器上准备本地配置（`.env` 和允许名单不会提交到 Git）：
+
+```powershell
+Copy-Item oauth2-proxy.env.example .env
+Copy-Item oauth2-proxy/allowed-emails.example oauth2-proxy/allowed-emails.txt
+```
+
+编辑 `.env` 填入 Google 客户端 ID、客户端密钥、随机生成的 OAuth2 Proxy cookie secret，以及与 Google 中登记项完全一致的公开 HTTPS 回调 URL。编辑 `oauth2-proxy/allowed-emails.txt`，每行一个获准的 Google 账号邮箱。随后运行 `docker compose up -d`。不要把应用容器或 OAuth2 Proxy 的 `4180` 端口额外暴露到公网；Cloudflare Tunnel 不需要开放入站端口。
+
+此配置只负责限制访问；游戏程序仍使用玩家在标题页填写的代号，尚未把 Google 身份映射为游戏名称。
+
 镜像从源码（`git clone`）构建，Releases 的整合包不含 `Dockerfile`。镜像基于 `node:22-alpine`，多阶段构建，只含生产依赖（包括 `ses@2.3.0` 和 `acorn@8.18.0`）；`public/vendor`（含 `ses.umd.js` / `acorn.mjs`）在构建时生成。`node_modules` 是镜像安装目录里的实际文件，不是指向镜像外的符号链接，脚本沙箱子进程可以在 `--allow-fs-read` 范围内读取。`.dockerignore` 排除了 `public/assets`（不会把宿主机素材打进构建上下文）；`public/fonts`、`data/assets.json` 和 `data/local-assets.json` 若存在会被复制进去。环境变量同 README（`-e SP_VERIFY=sample` 等）。健康检查：`GET /healthz`。
 
 **持久化插件**：把命名卷或宿主机目录挂到 `/app/plugins`，例如加 `-v stronghold-plugins:/app/plugins`。

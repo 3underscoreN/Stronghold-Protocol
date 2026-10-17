@@ -14,10 +14,10 @@
 import { h, Fragment } from '../../vendor/preact.module.js';
 import { useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from '../../vendor/hooks.module.js';
 import htm from '../../vendor/htm.module.js';
-import { DIFFICULTY_NAMES, DIFFICULTY_COLORS } from '../../../shared/constants.js';
+import { DIFFICULTY_NAMES, DIFFICULTY_COLORS, EMOTE_CATALOG } from '../../../shared/constants.js';
 import { t } from '../../../shared/i18n.js';
 import { serverNow } from '../store.js';
-import { data, useData, localAsset } from '../data.js';
+import { data, useData, localAsset, artUrls, nextArtUrl } from '../data.js';
 import { uiUrl } from './assetUrls.js';
 
 /**
@@ -726,6 +726,25 @@ export function Spinner({ size = 'md', label, tone = 'mint', class: cls }) {
 // ---- Avatar frame ------------------------------------------------------------------------------
 
 const SEAT_HUES = [162, 196, 38, 280];
+const AVATAR_EMOTES = EMOTE_CATALOG.filter((emote) => emote.dir === 'basic' || emote.dir === 'basic_2');
+
+/** Art choices for default avatars, limited to the two basic emote sets and entries available in the manifests. */
+export function avatarArtChoices() {
+  return AVATAR_EMOTES.flatMap((emote) => {
+    const urls = artUrls(`emoticon/${emote.dir}`, emote.picId);
+    return urls.length ? [{ id: emote.id, urls }] : [];
+  });
+}
+
+/** Pick one available basic-emote picture for an avatar. */
+export function chooseAvatarArt(random = Math.random) {
+  const choices = avatarArtChoices();
+  if (!choices.length) return null;
+  const value = Number(random());
+  const index = Number.isFinite(value) ? Math.max(0, Math.min(choices.length - 1, Math.floor(value * choices.length))) : 0;
+  return choices[index];
+}
+
 /**
  * Square avatar frame with bracket corners. Falls back to a glyph (first letter / robot).
  * @param {{ name?: string, src?: string, size?: 'sm'|'md'|'lg'|'xl', seat?: number, host?: boolean, bot?: boolean,
@@ -733,14 +752,23 @@ const SEAT_HUES = [162, 196, 38, 280];
  */
 export function AvatarFrame({ name = '', src, size = 'md', seat = 0, host, bot, self, ready, offline, dead, empty, class: cls }) {
   const [badSrc, setBadSrc] = useState(null);
-  const imgOk = !!src && badSrc !== src;
+  const [randomArt, setRandomArt] = useState(null);
+  const [failedArt, setFailedArt] = useState(() => new Set());
+  const artReady = useData('local', 'assets');
+  useEffect(() => {
+    if (!artReady || empty || src || randomArt) return;
+    setRandomArt(chooseAvatarArt());
+  }, [artReady, empty, randomArt, src]);
+  const avatarSrc = src ? (badSrc === src ? null : src) : nextArtUrl(randomArt?.urls, failedArt);
+  const imgOk = !!avatarSrc;
   const hue = SEAT_HUES[((seat | 0) % 4 + 4) % 4];
   const glyph = [...(name || '').trim()][0] || '?';
   return html`<div class=${cx('avatar', `avatar--${size}`, 'brackets', host && 'is-host', bot && 'is-bot', self && 'is-self',
       ready && 'is-ready', offline && 'is-offline', dead && 'is-dead', empty && 'is-empty', cls)} style=${`--seat-hue:${hue}`}>
     <div class="avatar__img">
       ${empty ? html`<${Icon} name="plus" class="avatar__empty" />`
-        : imgOk ? html`<img src=${src} alt="" draggable=${false} onError=${() => setBadSrc(src)} />`
+        : imgOk ? html`<img src=${avatarSrc} alt="" draggable=${false} decoding="async"
+          onError=${() => src ? setBadSrc(src) : setFailedArt((failed) => new Set(failed).add(avatarSrc))} />`
         : bot ? html`<${Icon} name="robot" class="avatar__bot" />`
         : html`<span class="avatar__glyph">${glyph}</span>`}
     </div>

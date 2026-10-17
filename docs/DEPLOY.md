@@ -266,7 +266,7 @@ Copy-Item oauth2-proxy/allowed-emails.example oauth2-proxy/allowed-emails.txt
 
 编辑 `.env` 填入 Google 客户端 ID、客户端密钥、随机生成的 OAuth2 Proxy cookie secret，以及与 Google 中登记项完全一致的公开 HTTPS 回调 URL。编辑 `oauth2-proxy/allowed-emails.txt`，每行一个获准的 Google 账号邮箱。随后运行 `docker compose up -d`。不要把应用容器或 OAuth2 Proxy 的 `4180` 端口额外暴露到公网；Cloudflare Tunnel 不需要开放入站端口。
 
-此配置只负责限制访问；游戏程序仍使用玩家在标题页填写的代号，尚未把 Google 身份映射为游戏名称。
+`oauth2-proxy/alpha-config.yaml` 显式设置 `server.bindAddress: "0.0.0.0:4180"`（alpha 配置不会继承旧的 `OAUTH2_PROXY_HTTP_ADDRESS`），并启用 PKCE S256。配置通过通用 OIDC provider 向 Google 请求 `openid email profile`，并额外获取 `sub`、`email`、`name`、`picture`。页面启动时直接请求 OAuth2 Proxy 的同源 `/oauth2/userinfo`，在浏览器控制台输出返回对象，并单独输出 `additionalClaims.name` 作为 Google 显示名称诊断；不再使用应用的 `/auth/profile` 路由或 Nginx claim-header 转发。这个名称目前只记录在控制台，标题页仍使用玩家填写的代号。输出包含个人资料信息，不要公开分享；不要记录或分享 OAuth Cookie / token。Google UserInfo 文档：[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)。Alpha 配置格式可能随 OAuth2 Proxy 版本变化，升级代理时请先按该版本验证配置（[v7.15.5 alpha 示例](https://github.com/oauth2-proxy/oauth2-proxy/blob/v7.15.5/contrib/local-environment/oauth2-proxy-alpha-config.yaml)）。
 
 镜像从源码（`git clone`）构建，Releases 的整合包不含 `Dockerfile`。镜像基于 `node:22-alpine`，多阶段构建，只含生产依赖（包括 `ses@2.3.0` 和 `acorn@8.18.0`）；`public/vendor`（含 `ses.umd.js` / `acorn.mjs`）在构建时生成。`node_modules` 是镜像安装目录里的实际文件，不是指向镜像外的符号链接，脚本沙箱子进程可以在 `--allow-fs-read` 范围内读取。`.dockerignore` 排除了 `public/assets`（不会把宿主机素材打进构建上下文）；`public/fonts`、`data/assets.json` 和 `data/local-assets.json` 若存在会被复制进去。环境变量同 README（`-e SP_VERIFY=sample` 等）。健康检查：`GET /healthz`。
 
@@ -325,6 +325,8 @@ volumes:
   `sudo systemctl daemon-reload && sudo systemctl enable --now stronghold`；日志 `journalctl -u stronghold -f`；防火墙 `sudo ufw allow 3000/tcp`。
 
 ## 5. 排错
+
+Google 登录名称：标题页会从 OAuth2 Proxy 的 `/oauth2/userinfo` 读取 `additionalClaims.name`；有有效名称时填入并锁定玩家名称输入框，并在 `hello` 中使用该名称。没有有效名称时保留已保存代号且允许编辑。
 
 | 现象 | 处理 |
 |---|---|

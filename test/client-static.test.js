@@ -997,7 +997,7 @@ describe('data.js', () => {
 
 describe('screen helpers', () => {
   test('title: sanitizeName / isValidName / findUiAsset', async () => {
-    const { sanitizeName, isValidName, findUiAsset } = await mod('screens/title.js');
+    const { sanitizeName, isValidName, findUiAsset, googleDisplayName } = await mod('screens/title.js');
     assert.equal(sanitizeName('  凯尔希  '), '凯尔希');
     assert.equal(sanitizeName('a\u0000b\u200bc\u202ed'), 'abcd');
     assert.equal(sanitizeName('a   b'), 'a b');
@@ -1014,6 +1014,9 @@ describe('screen helpers', () => {
     assert.equal(sanitizeName(null), '');
     assert.equal(isValidName('   '), false);
     assert.equal(isValidName('Doctor'), true);
+    assert.equal(googleDisplayName({ additionalClaims: { name: '  Dr. Chen  ' } }), 'Dr. Chen');
+    assert.equal(googleDisplayName({ additionalClaims: { name: ' \u200b ' } }), null);
+    assert.equal(googleDisplayName({ additionalClaims: { email: 'doctor@example.com' } }), null);
     assert.equal(findUiAsset({ ui: { 'entry/bkg_01': '/assets/ui/entry/bkg_01.png' } }, ['titleBackdrop', 'entry/bkg_01']), '/assets/ui/entry/bkg_01.png');
     assert.equal(findUiAsset({ ui: { titleBackdrop: { url: '/a.png' } } }, ['titleBackdrop']), '/a.png');
     assert.equal(findUiAsset({ files: ['/assets/ui/entry_bkg_01.webp'] }, ['entry_bkg_01']), '/assets/ui/entry_bkg_01.webp');

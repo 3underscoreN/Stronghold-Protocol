@@ -34,9 +34,6 @@ services:
       - ./oauth2-proxy/allowed-emails.txt:/etc/oauth2-proxy/allowed-emails.txt:ro
     expose:
       - "4180"
-    depends_on:
-      - app
-      - nginx
     restart: unless-stopped
 
   nginx:

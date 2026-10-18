@@ -54,6 +54,8 @@ logs/
 scripts/service.env.cmd
 .env
 .env.*
+oauth2-proxy/allowed-emails.txt
+cloudflared/credentials.json
 
 # --- OS / editor clutter ---------------------------------------------------------------------------
 .DS_Store

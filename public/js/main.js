@@ -43,8 +43,8 @@ import { net, identity, NetError } from './net.js';
 import { store, useStore, emptyMatch, selectRoute, sessionResetNotice, isSpectating } from './store.js';
 import { data } from './data.js';
 import { GAME_FILES } from './ui/gameComponents.js';
-import { TitleScreen, sanitizeName } from './screens/title.js';
-import { LobbyScreen, rememberRoom, parseRoomParam, joinKnown } from './screens/lobby.js';
+import { TitleScreen, sanitizeName, googleDisplayName } from './screens/title.js';
+import { LobbyScreen, rememberRoom, parseRoomParam } from './screens/lobby.js';
 import { RoomScreen, TrustedNotice } from './screens/room.js';
 import { GameScreen } from './screens/game.js';
 import { audio, installAudio } from './audio.js';
@@ -164,7 +164,7 @@ function onWelcome(msg) {
   const name = typeof msg.name === 'string' && msg.name ? msg.name : prev.me.name;
   identity.saveName(name);
   store.set({
-    me: { playerId: msg.playerId ?? null, name, token: typeof msg.token === 'string' ? msg.token : null },
+    me: { ...prev.me, playerId: msg.playerId ?? null, name, token: typeof msg.token === 'string' ? msg.token : null },
     // the server's content identity (DESIGN §32): the diagnostics name it (diag.js contentLine)
     content: msg.content && typeof msg.content.vanilla === 'string' ? { vanilla: msg.content.vanilla } : null,
     // how many unofficial plugins it has (P1a — absent: none; content.js fetches the catalogue only when there are some)
@@ -371,6 +371,31 @@ function installGlobalErrorHandlers() {
   });
 }
 
+async function loadGoogleDisplayName() {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+  try {
+    const response = await fetch('/oauth2/userinfo', {
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`userinfo request failed (${response.status})`);
+    }
+    const userinfo = await response.json();
+    if (!userinfo || typeof userinfo !== 'object' || Array.isArray(userinfo)) {
+      throw new Error('invalid userinfo response');
+    }
+    return googleDisplayName(userinfo);
+  } catch (err) {
+    console.warn('[auth] Google display name unavailable; callsign remains editable', err);
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function boot() {
   installGlobalErrorHandlers();
   // what this page downloads, by category, for the 问题反馈 report's traffic line (diag.js; nothing is sent anywhere)
@@ -383,6 +408,7 @@ async function boot() {
   window.addEventListener('pageshow', (ev) => { if (ev.persisted) location.reload(); });
   // Pick this tab's reconnect token (asks other live tabs; ≤150 ms) while fonts load.
   const identityReady = identity.init();
+  const googleNameReady = loadGoogleDisplayName();
 
   const pendingJoin = parseRoomParam(location.search);
   const savedName = sanitizeName(identity.loadName());
@@ -424,8 +450,12 @@ async function boot() {
   data.load('local').catch(() => {});
 
   const connectWhenReady = identityReady.then(() => {
-    if (entered) net.setName(savedName);
-    else net.connect();
+    return googleNameReady.then((googleName) => {
+      const name = googleName || savedName;
+      store.set((s) => ({ me: { ...s.me, name, googleName } }));
+      if (entered) net.setName(name);
+      else net.connect();
+    });
   });
   // the language (and its UI translations) before the first render: no Chinese flash for an English player
   const langReady = initLang().catch((err) => console.warn('[app] language setup failed', err));

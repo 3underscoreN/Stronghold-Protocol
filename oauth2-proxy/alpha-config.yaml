@@ -1,0 +1,25 @@
+server:
+  bindAddress: "0.0.0.0:4180"
+
+upstreamConfig:
+  upstreams:
+    - id: auth-only
+      path: /
+      static: true
+      staticCode: 200
+
+providers:
+  - id: google
+    provider: oidc
+    name: Google
+    clientID: "${GOOGLE_OAUTH_CLIENT_ID}"
+    clientSecret: "${GOOGLE_OAUTH_CLIENT_SECRET}"
+    scope: "openid email profile"
+    oidcConfig:
+      issuerURL: "https://accounts.google.com"
+    profileURL: "https://www.googleapis.com/oauth2/v3/userinfo"
+    additionalClaims:
+      - sub
+      - email
+      - name
+      - picture

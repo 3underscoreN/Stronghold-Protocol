@@ -58,6 +58,12 @@ export function enterSession(rawName) {
   return true;
 }
 
+/** The Google display name OAuth2 Proxy exposes in `/oauth2/userinfo`, when present. */
+export function googleDisplayName(userinfo) {
+  const name = userinfo?.additionalClaims?.name;
+  return typeof name === 'string' ? sanitizeName(name) || null : null;
+}
+
 // data/assets.json `ui` keys are 'group/key' (docs/ASSETS.md).
 const BACKDROP_KEYS = ['titleBackdrop', 'entry/bkg_01', 'entry/bkg_02'];
 const RIDGE_KEYS = ['titleRidges', 'entry/bg_mountains_tiled'];
@@ -166,11 +172,13 @@ export function TitleScreen() {
   const pendingJoin = useStore((s) => s.ui.pendingJoin);
   useLang(); // re-render on a language switch
   const currentName = useStore((s) => s.me.name);
-  const [name, setName] = useState(() => currentName || identity.loadName() || '');
+  const googleName = useStore((s) => s.me.googleName);
+  const [name, setName] = useState(() => googleName || currentName || identity.loadName() || '');
   // An import may restore the current name while this screen remains behind the stats overlay.
   useEffect(() => {
-    if (currentName) setName((draft) => draft || currentName);
-  }, [currentName]);
+    if (googleName) setName(googleName);
+    else if (currentName) setName((draft) => draft || currentName);
+  }, [currentName, googleName]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // the list of the server's plugins once loaded (ui/pluginPanel.js — a component in state: set through an updater)
   const [Installed, setInstalled] = useState(null);

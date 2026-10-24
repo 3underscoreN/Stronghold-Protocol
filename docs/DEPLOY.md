@@ -326,6 +326,8 @@ volumes:
 
 ## 5. 排错
 
+Google 登录名称：标题页会从 OAuth2 Proxy 的 `/oauth2/userinfo` 读取 `additionalClaims.name`；有有效名称时填入并锁定玩家名称输入框，并在 `hello` 中使用该名称。没有有效名称时保留已保存代号且允许编辑。
+
 | 现象 | 处理 |
 |---|---|
 | 任何问题 | `node tools/doctor.mjs`：Node 版本、依赖、素材完整性、端口、局域网地址、防火墙、网络类型 |

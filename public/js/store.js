@@ -2,7 +2,7 @@
 //
 // One app-wide store holds everything the UI renders from:
 //   connection  – socket status + latency (fed by net.js via main.js)
-//   me          – { playerId, name, token } from `welcome`
+//   me          – { playerId, name, token } from `welcome`; googleName from OAuth2 Proxy UserInfo when available
 //   content     – `welcome.content`: the server's content identity { vanilla: <cs> } (DESIGN §32), or null
 //   session     – { entered } (the player pressed 开始 on the title screen in this tab)
 //   room        – last `room.state` payload (without `t`) or null
@@ -81,7 +81,7 @@ export const emptyMatch = () => ({ public: null, private: null, field: null, res
 /** Initial app state (exported for tests and resets). */
 export const initialState = Object.freeze({
   connection: { status: 'idle', ping: null, attempt: 0, retryAt: 0, lastError: null, everOnline: false },
-  me: { playerId: null, name: '', token: null },
+  me: { playerId: null, name: '', token: null, googleName: null },
   content: null,
   // how many unofficial plugins the server has (DESIGN §32 P1a: /healthz or welcome `content.plugins`; content.js)
   installedPlugins: 0,

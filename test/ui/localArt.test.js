@@ -103,6 +103,7 @@ describe('emotes and 玩法说明 pages: local art first, then the mirror copy (
     const { data, artUrls, nextArtUrl, localAsset } = await import('../../public/js/data.js');
     await reload(data);
     const { emoteArtUrl, emoteArtUrls } = await import('../../public/js/ui/emotes.js');
+    const { avatarArtChoices, chooseAvatarArt } = await import('../../public/js/ui/components.js');
     const { guidePages } = await import('../../public/js/ui/guide.js');
     assert.deepEqual(emoteArtUrls('autochess_battle_happy'), ['/assets/local/emoticon/basic/pic_happy_battle.png', '/assets/ui/emoticon/basic/pic_happy_battle.png']);
     assert.equal(emoteArtUrl('autochess_battle_happy'), '/assets/local/emoticon/basic/pic_happy_battle.png', 'local first');
@@ -110,6 +111,11 @@ describe('emotes and 玩法说明 pages: local art first, then the mirror copy (
     assert.deepEqual(emoteArtUrls('autochess_battle_dying'), [], 'neither: the glyph');
     assert.equal(emoteArtUrl('autochess_battle_dying'), null);
     assert.deepEqual(emoteArtUrls('__proto__'), []);
+    const avatarChoices = avatarArtChoices();
+    assert.deepEqual(avatarChoices.map((choice) => choice.id), ['autochess_battle_happy', 'autochess_battle_sad']);
+    assert.deepEqual(chooseAvatarArt(() => 0), avatarChoices[0]);
+    assert.deepEqual(chooseAvatarArt(() => 0.99), avatarChoices.at(-1));
+    assert.deepEqual(chooseAvatarArt(() => 1), avatarChoices.at(-1), 'clamps a random value at the upper bound');
     const pages = guidePages();
     assert.deepEqual(pages.map((p) => p.key), ['autochess_home_1', 'autochess_home_2', 'autochess_home_9', 'autochess_shop_1', 'autochess_handbook_4'], 'reading order, either source');
     assert.deepEqual(pages[0].urls, ['/assets/local/guide/autochess_home_1.png', '/assets/ui/guide/autochess_home_1.png']);

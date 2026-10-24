@@ -33,10 +33,10 @@ test('offline is a failed request, not evidence that the server already released
   assert.deepEqual(s.sent, ['g.leave']);
 });
 
-test('failed room leave preserves the latest waiting-room state pushed after match leave', async (t) => {
+test('failed room leave after WRONG_PHASE preserves the latest waiting-room state', async (t) => {
   const waiting = { code: 'QTES', mode: 'solo', inMatch: false };
   const s = setup(t, (type) => {
-    if (type === 'g.leave') { store.set({ room: waiting, match: emptyMatch() }); return { t: 'ok' }; }
+    if (type === 'g.leave') { store.set({ room: waiting, match: emptyMatch() }); return refuse('WRONG_PHASE'); }
     return refuse('TIMEOUT');
   });
   await quitMatch();
@@ -45,12 +45,12 @@ test('failed room leave preserves the latest waiting-room state pushed after mat
   assert.deepEqual(s.sent, ['g.leave', 'room.leave']);
 });
 
-test('successful match and room leaves still clear local context', async (t) => {
+test('an acknowledged match leave clears context without a redundant room request', async (t) => {
   const s = setup(t, () => ({ t: 'ok' }));
   await quitMatch();
   assert.equal(store.get().room, null);
   assert.equal(store.get().match.public, null);
-  assert.deepEqual(s.sent, ['g.leave', 'room.leave']);
+  assert.deepEqual(s.sent, ['g.leave']);
 });
 
 test('already absent server context remains an idempotent successful exit', async (t) => {
@@ -58,7 +58,7 @@ test('already absent server context remains an idempotent successful exit', asyn
   await quitMatch();
   assert.equal(store.get().room, null);
   assert.equal(store.get().match.public, null);
-  assert.deepEqual(s.sent, ['g.leave', 'room.leave']);
+  assert.deepEqual(s.sent, ['g.leave']);
 });
 
 test('wrong match phase followed by an accepted room leave still clears context', async (t) => {
@@ -67,4 +67,12 @@ test('wrong match phase followed by an accepted room leave still clears context'
   assert.equal(store.get().room, null);
   assert.equal(store.get().match.public, null);
   assert.deepEqual(s.sent, ['g.leave', 'room.leave']);
+});
+
+test('an acknowledged departure is conclusive even when a redundant request would disconnect', async (t) => {
+  const s = setup(t, type => type === 'g.leave' ? { t: 'ok' } : refuse('DISCONNECTED'));
+  await quitMatch();
+  assert.equal(store.get().room, null);
+  assert.equal(store.get().match.public, null);
+  assert.deepEqual(s.sent, ['g.leave']);
 });

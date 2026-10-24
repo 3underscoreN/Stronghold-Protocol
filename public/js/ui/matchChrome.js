@@ -49,9 +49,9 @@ export async function quitMatch() {
   let left = false;
   try {
     try { await net.request('g.leave', {}); } catch (err) {
-      if (err?.code !== 'NOT_IN_ROOM' && err?.code !== 'WRONG_PHASE' && err?.code !== 'OFFLINE') throw err;
+      if (err?.code !== 'NOT_IN_ROOM' && err?.code !== 'WRONG_PHASE') throw err;
     }
-    try { await net.request('room.leave', {}); } catch (err) { if (err?.code !== 'NOT_IN_ROOM' && err?.code !== 'OFFLINE') throw err; }
+    try { await net.request('room.leave', {}); } catch (err) { if (err?.code !== 'NOT_IN_ROOM') throw err; }
     left = true;
   } catch (err) {
     toastError(err);
@@ -60,7 +60,9 @@ export async function quitMatch() {
     if (left && !store.get().match.result) {
       try { recordQuit(before); } catch (err) { console.warn('[stats] quit record failed', err); }
     }
-    store.set({ room: null, match: emptyMatch() });
+    // A failed request does not establish that the server released the seat. Keep the latest view for a retry
+    // (or a reconnect), including a waiting-room update received after g.leave succeeded.
+    if (left) store.set({ room: null, match: emptyMatch() });
   }
 }
 

@@ -55,13 +55,19 @@ describe('#746 bond timer settings and selected-unit card', { skip: !ENABLED && 
       }, LABEL);
       assert.equal(state.on, 'false'); assert.match(state.prior, /显示弹药与能量数量/);
       await toggle(page); await page.keyboard.press('Escape');
+      // #792 / DESIGN §35.93: opening settings dismisses the detail card. Select the unit again
+      // to test the setting, rather than waiting for a card that intentionally closed.
+      assert.equal(await page.$('.dpanel'), null);
+      await page.click('.ff-unit.is-ally');
       await page.waitForSelector('.dbond-times');
       assert.match(await cardText(page), /2 层 · 下一层 3.2 秒/);
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sp.pref.settings')).bondTimers), true);
       await page.reload({ waitUntil: 'networkidle0' }); await page.waitForSelector('.ff-unit.is-ally');
       await inject(page, rows); await page.click('.ff-unit.is-ally'); await page.waitForSelector('.dbond-times');
       await page.click('.gm__gear'); await page.waitForSelector('.modal'); await toggle(page); await page.keyboard.press('Escape');
-      await page.waitForFunction(() => !document.querySelector('.dbond-times'));
+      assert.equal(await page.$('.dpanel'), null);
+      await page.click('.ff-unit.is-ally'); await page.waitForSelector('.dpanel');
+      assert.equal(await page.$('.dbond-times'), null, 'disabled even with the unit card open');
       assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('sp.pref.settings')).bondTimers), false);
     } finally { await page.close(); }
   });

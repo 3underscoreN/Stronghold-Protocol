@@ -1,6 +1,7 @@
-// test/http-versions-config.test.js — which official versions a server offers (DESIGN §35.23, M1;
+// test/http-versions-config.test.js — which official versions a server offers (DESIGN §35.23, M1, §35.23.11;
 // server/http/config.js versionsFrom): the `versions` option, else SP_VERSIONS / SP_VERSION_DEFAULT /
-// SP_MAX_VERSION_HOSTS. Only act2autochess by default; unknown ids and a default that is not enabled are warned about.
+// SP_MAX_VERSION_HOSTS. Nothing set enables every registry id (default act2autochess); a set list narrows it.
+// Unknown ids and a default that is not enabled are warned about.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -26,13 +27,27 @@ function run(opts = {}, env = {}) {
   }
 }
 
-test('nothing set: act2autochess alone, no hosts, no warning', () => {
-  assert.deepEqual(run(), { enabled: ['act2autochess'], default: 'act2autochess', maxHosts: 0, warnings: [] });
+const ALL = ['act2autochess', 'act2autochess@V2_1', 'act1autochess', 'act1autochess@V1_1'];
+
+test('nothing set enables every version in registry order; the default stays act2autochess', () => {
+  const r = run();
+  assert.deepEqual(r, run({}, { SP_VERSIONS: 'all' }));
+  assert.deepEqual(r, run({ versions: {} }));
+  assert.deepEqual(r.enabled, ALL);
+  assert.equal(r.default, 'act2autochess');
+  assert.equal(r.maxHosts, 3);
+  assert.deepEqual(r.warnings, []);
+});
+
+test('SP_VERSIONS=act2autochess, or that one id in the option, narrows to 第二期下半: no hosts', () => {
+  const one = { enabled: ['act2autochess'], default: 'act2autochess', maxHosts: 0, warnings: [] };
+  assert.deepEqual(run({}, { SP_VERSIONS: 'act2autochess' }), one);
+  assert.deepEqual(run({ versions: { enabled: ['act2autochess'] } }, { SP_VERSIONS: 'all' }), one);
 });
 
 test("SP_VERSIONS=all enables the four versions in registry order, one host each beyond the default", () => {
   const r = run({}, { SP_VERSIONS: 'all' });
-  assert.deepEqual(r.enabled, ['act2autochess', 'act2autochess@V2_1', 'act1autochess', 'act1autochess@V1_1']);
+  assert.deepEqual(r.enabled, ALL);
   assert.equal(r.default, 'act2autochess');
   assert.equal(r.maxHosts, 3);
   assert.deepEqual(r.warnings, []);
@@ -78,5 +93,11 @@ test('SP_MAX_VERSION_HOSTS: junk keeps the default with a warning; 0 is raised t
   assert.equal(zero.maxHosts, 1);
   assert.match(zero.warnings[0], /raised to 1/);
   assert.equal(run({}, { SP_VERSIONS: 'all', SP_MAX_VERSION_HOSTS: '2' }).maxHosts, 2);
-  assert.deepEqual(run({}, { SP_MAX_VERSION_HOSTS: '0' }).warnings, [], 'no non-default version, no host needed');
+  const capped = run({}, { SP_MAX_VERSION_HOSTS: '0' });
+  assert.equal(capped.enabled.length, 4);
+  assert.equal(capped.maxHosts, 1);
+  assert.match(capped.warnings[0], /raised to 1/);
+  const narrowed = run({}, { SP_VERSIONS: 'act2autochess', SP_MAX_VERSION_HOSTS: '0' });
+  assert.equal(narrowed.maxHosts, 0);
+  assert.deepEqual(narrowed.warnings, [], 'no non-default version, no host needed');
 });

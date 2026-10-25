@@ -9,8 +9,8 @@
 //   * a vote opened while a voter has 干员调配 open floats above it (an alertdialog that takes the focus, its countdown not
 //     announced; the room's strip under it aria-hidden),
 //     and agreeing there switches the open 干员调配 to the new version's operators (95, then 112 back); a replay open when
-//     the room goes away (a kick) keeps its version shown and is never replaced by the wait; a default server does not
-//     offer another version's record for re-viewing;
+//     the room goes away (a kick) keeps its version shown and is never replaced by the wait; a server limited to
+//     第二期下半 (SP_VERSIONS=act2autochess) does not offer another version's record for re-viewing;
 //   * phones (667×375): the chip, the picker, the room pill, the strip and the banner fit the width;
 //   * no console error on any page.
 // Game texts of another version stay Chinese in other languages until M3 (data.js versionFiles) — not checked here.
@@ -291,8 +291,8 @@ describe('official versions (real server, SP_VERSIONS=all)', { skip: !ENABLED &&
     }
   });
 
-  test('a default server: a record of another version is not offered for re-viewing (1280×720)', { timeout: 3 * 60 * 1000 }, async () => {
-    const srv = await startRealServer({ env: {} });
+  test('a server limited to 第二期下半: a record of another version is not offered for re-viewing (1280×720)', { timeout: 3 * 60 * 1000 }, async () => {
+    const srv = await startRealServer({ env: { SP_VERSIONS: 'act2autochess' } });
     const P = (await import('puppeteer-core')).default;
     const c = new Client(P, srv.base, 'default', { prefix: 'versions-default', w: 1280, h: 720 });
     try {

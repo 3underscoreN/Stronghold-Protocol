@@ -1,7 +1,7 @@
 // The settlement flow's own facts (screens/settle.js): the level settlement against the official 60 levels of
 // cumulative 卫戍认证 (config.rewards.milestones, act2autochess milestoneList) and the 每日防卫目标 bonus
 // (config.rewards.daily, dailyMission*), counted from this device's records — official settled matches only — plus the
-// small helpers of the cards (elite level by tier, the ace, time and date). The pages themselves: test/ui/mock.e2e.test.js.
+// small helpers of the cards (the record's promotion status, the ace, time and date). The pages themselves: test/ui/mock.e2e.test.js.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -115,11 +115,13 @@ test('levelProgress without the data\'s rewards: the rewards only, no daily goal
   assert.deepEqual([p.before, p.after, p.bonus, p.daily], [30, 40, 0, null]);
 });
 
-test('the card helpers: elite level by tier, the ace, time and date, a row\'s own outcome', () => {
-  assert.deepEqual(S.opLevel(1, false), { phase: 1, level: 55 });
-  assert.deepEqual(S.opLevel(2, true), { phase: 2, level: 55 });
-  assert.deepEqual(S.opLevel(5, false), { phase: 2, level: 1 });
-  assert.deepEqual(S.opLevel(6, true), { phase: 2, level: 60 });
+test('the card helpers: actual promotion status, the ace, time and date, a row\'s own outcome', () => {
+  for (const [id, status] of [
+    ['chess_char_1_01_a', { phase: 1, level: 55 }], ['chess_char_2_01_b', { phase: 2, level: 55 }],
+    ['chess_char_5_01_a', { phase: 2, level: 1 }], ['chess_char_6_01_b', { phase: 2, level: 60 }],
+  ]) assert.deepEqual(S.opLevel(data.lookup('chess', id)), status);
+  assert.deepEqual(S.opLevel({ tier: 1, isGolden: true, status: { phase: 0, level: 30 } }), { phase: 0, level: 30 });
+  assert.deepEqual(S.opLevel(null), { phase: undefined, level: '—' }, 'a missing record invents no status');
   const lineup = [{ id: 'a', tier: 4 }, { id: 'b', tier: 5 }, { id: 'c', tier: 5, golden: true }, { id: 't', tier: 6, kind: 'token' }];
   assert.equal(S.aceOf(lineup).id, 'c', 'the highest tier, elite first; a token never');
   assert.equal(S.aceOf([]), null);

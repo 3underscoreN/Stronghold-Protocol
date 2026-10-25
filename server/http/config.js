@@ -12,7 +12,8 @@
 //     (assetIndex.js); the index of the default public/ persists in .cache/asset-hashes.json;
 //   * SP_VERSIONS ('all' or a comma list of shared/versions.js ids), SP_VERSION_DEFAULT and SP_MAX_VERSION_HOSTS (or the
 //     `versions: { enabled, default, maxHosts }` option, which wins) → the official versions this server offers
-//     (DESIGN §35.23, M1; versionsFrom): only act2autochess unless one of them says otherwise;
+//     (DESIGN §35.23, versionsFrom): every registry id unless one of them narrows the list (SP_VERSIONS=act2autochess
+//     is 第二期下半 alone, the switch off);
 //   * the served directories (public/, data/, shared/, the content packs' packs/ and the plugins' plugins/ of this
 //     repository unless the options name others), and which startServer() options are handed on to net.js Network and
 //     lobby.js Lobby.
@@ -184,11 +185,13 @@ function applyEnvLimits(target, table, log) {
 }
 
 /**
- * The official versions this server offers (DESIGN §35.23, M1): the `versions` option, else SP_VERSIONS ('all' or a comma
- * list of registry ids), SP_VERSION_DEFAULT and SP_MAX_VERSION_HOSTS. An unknown id is warned about and dropped; nothing
- * left keeps act2autochess alone (the switch off, also the default when nothing is set); a default that is not enabled
- * is warned about and replaced by the first enabled id in registry order. `enabled` comes out in registry order.
- * `maxHosts` caps the version match hosts (server/match/host, kind 'version'): by default one per enabled non-default
+ * The official versions this server offers (DESIGN §35.23): the `versions` option, else SP_VERSIONS ('all' or a comma
+ * list of registry ids), SP_VERSION_DEFAULT and SP_MAX_VERSION_HOSTS. Nothing set enables every registry id (the lobby
+ * switch on; the default version stays act2autochess). SP_VERSIONS or `versions.enabled` narrows that list —
+ * SP_VERSIONS=act2autochess is 第二期下半 alone, the switch off. An unknown id is warned about and dropped; nothing left
+ * keeps act2autochess alone; a default that is not enabled is warned about and replaced by the first enabled id in
+ * registry order. `enabled` comes out in registry order. `maxHosts` caps the version match hosts (server/match/host,
+ * kind 'version' — forked on the first match of a version, never at boot): by default one per enabled non-default
  * version, and at least 1 whenever there is one.
  * @param {{ versions?: { enabled?: 'all' | string[], default?: string, maxHosts?: number } }} opts
  * @param {{ warn?: (m: string) => void } | null} [log]
@@ -199,7 +202,8 @@ export function versionsFrom(opts, log = null) {
   const envList = String(process.env.SP_VERSIONS ?? '').trim();
   /** @type {unknown} */
   let wanted = o.enabled ?? (envList === '' ? null : (envList.toLowerCase() === 'all' ? 'all' : envList.split(',')));
-  if (wanted == null) wanted = [DEFAULT_VERSION];
+  // Nothing set: every official version (registry order). A set list, including one id, narrows it.
+  if (wanted == null) wanted = 'all';
   let ids;
   if (wanted === 'all') ids = VERSIONS.map((v) => v.id);
   else {

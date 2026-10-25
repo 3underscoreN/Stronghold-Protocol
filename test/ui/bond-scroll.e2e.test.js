@@ -1,16 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
-const chrome = process.env.CHROME_PATH;
-test('all bonds remain reachable by arrows, keyboard and native scrolling', { skip: process.env.SP_E2E !== '1' || !chrome || !existsSync(chrome), timeout: 90000 }, async () => {
+import { CHROME, hasChrome } from '../e2e/client.mjs';
+test('all bonds remain reachable by arrows, keyboard and native scrolling', { skip: process.env.SP_E2E !== '1' || !hasChrome(), timeout: 90000 }, async () => {
   const { startServer } = await import('../../server/index.js');
   const puppeteer = (await import('puppeteer-core')).default;
   const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true });
-  const browser = await puppeteer.launch({ executablePath: chrome, headless: true, args: ['--no-sandbox', '--no-proxy-server'] });
+  const browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox', '--no-proxy-server'] });
   try {
     for (const [width, height, touch] of [[1920, 1080, false], [844, 390, true]]) {
       const page = await browser.newPage();
       const errors = []; page.on('pageerror', e => errors.push(e.message));
+      await page.evaluateOnNewDocument(() => {
+        globalThis.__bondResizeErrors = [];
+        // Native observer delivery errors reach window.error, rather than Puppeteer's pageerror event.
+        addEventListener('error', e => { if (e.message.includes('ResizeObserver')) globalThis.__bondResizeErrors.push(e.message); });
+      });
       await page.setViewport({ width, height, isMobile: touch, hasTouch: touch });
       await page.goto(srv.url + '/dev/game-mock.html?shot=1&render=fallback&phase=PREP');
       await page.waitForSelector('.bstrip .bond');
@@ -76,6 +80,7 @@ test('all bonds remain reachable by arrows, keyboard and native scrolling', { sk
       assert.equal(frozen.initial, 1);
       assert.deepEqual(frozen.afterUpdate, { created: 1, disconnected: 0 }, 'layer updates reuse the observer');
       assert.equal(frozen.afterUnmount, 1, 'unmount disconnects the observer');
+      assert.deepEqual(await page.evaluate(() => globalThis.__bondResizeErrors), [], 'resizing the strip must not loop during observer delivery');
       assert.deepEqual(errors, []);
       await page.close();
     }

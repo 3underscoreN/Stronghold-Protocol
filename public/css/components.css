@@ -1167,8 +1167,10 @@
 .vertag__label { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .vertag--compact { height: .2rem; padding: 0 .06rem; font-size: calc(.11 * var(--t)); }
 .verchip-wrap { display: inline-flex; align-items: center; gap: .06rem; min-width: 0; }
+/* [ASSUMED] Keep the season and part whole as 文字大小 grows (§35.23.11): a rem cap cut the part in English and
+   Japanese. The top bar reserves the chip's natural width beside its tools. */
 .verchip {
-  display: inline-flex; align-items: center; gap: .06rem; min-width: 0; max-width: 3.6rem; height: max(.42rem, 28px); padding: 0 .14rem;
+  display: inline-flex; align-items: center; gap: .06rem; min-width: 0; height: max(.42rem, 28px); padding: 0 .14rem;
   border: 1px solid var(--line-2); background: rgba(0, 0, 0, .45); color: var(--text-md);
   font: inherit; font-size: calc(.14 * var(--t)); font-weight: 700; white-space: nowrap;
 }
@@ -1182,7 +1184,7 @@
 .verchip:hover:not(.verchip--ro), .verchip:focus-visible { filter: brightness(1.2); }
 .verchip--ro { cursor: default; }
 .verchip__retry { flex: none; height: max(.42rem, 28px); padding: 0 .12rem; border: 1px solid rgba(255, 106, 61, .7); background: rgba(255, 106, 61, .14); color: #ffb39a; font: inherit; font-size: calc(.13 * var(--t)); }
-.sp-coarse .verchip, .sp-coarse .verchip__retry { min-height: 40px; }
+.sp-coarse .verchip, .sp-coarse .verchip__retry { min-height: max(32px, calc(40px * var(--sp-ui, 1))); }
 .verpick__lead { margin: 0 0 .12rem; color: var(--text-md); font-size: calc(.15 * var(--t)); line-height: 1.6; }
 .verpick__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .08rem; max-height: 4.8rem; overflow: auto; }
 .verpick__row { border: 1px solid var(--line); background: rgba(0, 0, 0, .25); }
@@ -1242,7 +1244,7 @@
   .vertag { max-width: 3.4rem; height: auto; padding: 1px 5px; font-size: calc(.2 * var(--t)); line-height: 1.2; white-space: normal; }
   .vertag__label { white-space: normal; }
   /* the label is what tells the versions apart: the 版本 key word gives its room (the hourglass and the title say it) */
-  .verchip { max-width: 3.4rem; font-size: calc(.22 * var(--t)); }
+  .verchip { font-size: calc(.22 * var(--t)); }
   .verchip__k { display: none; }
   .verchip__state, .verchip__retry { font-size: calc(.2 * var(--t)); }
   .verpick__lead, .verpick__hint { font-size: calc(.22 * var(--t)); }

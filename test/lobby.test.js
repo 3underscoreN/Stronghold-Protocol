@@ -20,6 +20,7 @@ import { StubMatch as Match } from '../server/match/StubMatch.js';
 import { Match as RealMatch } from '../server/match/Match.js';
 import { TestClient } from './helpers/wsClient.js';
 import { ERR, MAX_SEATS, MAX_SPECTATORS, PHASE, EMOTES } from '../shared/constants.js';
+import { DEFAULT_VERSION, VERSIONS } from '../shared/versions.js';
 
 const CODE_RE = new RegExp(`^[${CODE_ALPHABET}]{4}$`);
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
@@ -539,7 +540,17 @@ describe('websocket lobby', () => {
   const cap = captureLog();
 
   before(async () => {
-    srv = await startServer({ port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match });
+    // The healthz case below pins the unset default (every official version). Read that, then put the environment back.
+    const saved = ['SP_VERSIONS', 'SP_VERSION_DEFAULT', 'SP_MAX_VERSION_HOSTS'].map((k) => [k, process.env[k]]);
+    for (const [k] of saved) delete process.env[k];
+    try {
+      srv = await startServer({ port: 0, host: '127.0.0.1', log: cap.log, MatchClass: Match });
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
     pool = clientPool(() => `ws://127.0.0.1:${srv.port}/ws`);
   });
   afterEach(async () => { await pool.closeAll(); });
@@ -1274,7 +1285,11 @@ describe('websocket lobby', () => {
     assert.ok(h.rooms >= 1);
     assert.ok(h.sockets >= 1);
     assert.ok(h.sessions >= 1);
-    assert.equal(Object.hasOwn(h, 'versions'), false, 'only 第二期下半 enabled: no versions block (DESIGN §35.23)');
+    assert.deepEqual(h.versions.enabled, VERSIONS.map((v) => v.id), 'nothing set enables every version (DESIGN §35.23.11)');
+    assert.equal(h.versions.default, DEFAULT_VERSION);
+    assert.equal(h.versions.hosts.workers, 0, 'an idle server has forked no version match host');
+    assert.equal(h.versions.hosts.matches, 0);
+    assert.equal(srv.versionHosts.stats().workers, 0);
   });
 });
 

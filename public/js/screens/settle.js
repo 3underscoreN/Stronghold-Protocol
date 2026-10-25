@@ -17,7 +17,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, DifficultyIcon, Spinner } from '../ui/components.js';
-import { OperatorImage, useGameData, Img, Sprite, PlayerAvatar, BondGlyph, BandIcon } from '../ui/gameComponents.js';
+import { OperatorImage, useGameData, Img, Sprite, PromotionIcon, PlayerAvatar, BondGlyph, BandIcon } from '../ui/gameComponents.js';
 import { normalizeResult, diyRecordFor, cardStandIn, standInForText } from '../ui/gameLogic.js';
 import { data } from '../data.js';
 import { itemIconUrl, enemyIconUrl, titleIconUrl } from '../ui/assetUrls.js';
@@ -149,13 +149,9 @@ export function levelProgress(records, { id = null, gain = 0, rounds = 0, trophi
 
 // ---- small facts --------------------------------------------------------------------------------------------------------
 
-// The operator's elite phase and level on the board, by tier, plain / elite (research 01-core-data charPriceByTier):
-// tiers I and II field E1 operators (55 / 60) and elite E2 ones (50 / 55); III–VI E2 at 1, elite at 60.
-const OP_LEVEL = { 1: [[1, 55], [2, 50]], 2: [[1, 60], [2, 55]] };
-/** @returns {{ phase: number, level: number }} */
-export function opLevel(tier, golden) {
-  const [phase, level] = (OP_LEVEL[tier] || [[2, 1], [2, 60]])[golden ? 1 : 0];
-  return { phase, level };
+/** Read the resolved chess / backup form, including the active version or plugin's status (#811). */
+export function opLevel(rec) {
+  return { phase: rec?.status?.phase, level: rec?.status?.level ?? '—' };
 }
 
 /** The ace of a lineup — the team card's art: the highest tier, elite first, the earliest on the board. */
@@ -236,12 +232,6 @@ function Logo() {
     <${Sprite} k="entry/season_logo_settle" class="slogo__img"
       fallback=${html`<${Sprite} k="settle/common_logo" class="slogo__img" fallback=${html`<b class="slogo__txt">STRONGHOLD<br />PROTOCOL</b>`} />`} />
   </div>`;
-}
-
-/** The official elite emblem (E1 / E2). */
-function EliteMark({ phase }) {
-  if (!(phase > 0)) return null;
-  return html`<${Sprite} k=${`elite/elite_${phase}`} class="selite" fallback=${html`<small class="selite">E${phase}</small>`} />`;
 }
 
 /** The mode pill: the official difficulty plate (its emblem, no text) under the difficulty's name. */
@@ -364,12 +354,12 @@ export function OpCard({ u, gd, i, ownerId }) {
     </div>`;
   }
   const v = unitView(u, gd);
-  const lv = opLevel(v.tier, v.golden);
+  const lv = opLevel(v.rec);
   return html`<div class=${cx('sop', v.tier && `sop--t${v.tier}`, v.golden && 'is-golden')} style=${`--i:${i}`} title=${v.title}>
     <span class="sop__art"><${OperatorImage} m=${gd.m} chess=${v.rec} ownerId=${ownerId} skin=${u.skin} portrait avatarFallback portraitClass="is-portrait" avatarClass="is-avatar" fallback=${html`<span class="sop__glyph">${[...(v.name || '?')][0]}</span>`} /></span>
     <${Sprite} k="settle/operator_frame" class="sop__frame" />
     ${v.tier ? html`<b class="sop__tier">${ROMAN[v.tier]}</b>` : null}
-    <span class="sop__lv"><${Sprite} k="settle/operator_lv_bg" class="sop__lvbg" /><${EliteMark} phase=${lv.phase} /><b class="num">${lv.level}</b></span>
+    <span class="sop__lv"><${Sprite} k="settle/operator_lv_bg" class="sop__lvbg" /><${PromotionIcon} m=${gd.m} phase=${lv.phase} class="selite" /><b class="num">${lv.level}</b></span>
     ${v.si ? html`<span class="sop__si" data-standin=${v.si.charId}>${t('替补')}</span>` : null}
     <span class="sop__slots">${[0, 1].map((k) => {
       const it = v.items[k];

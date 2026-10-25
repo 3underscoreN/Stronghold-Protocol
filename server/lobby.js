@@ -1929,7 +1929,7 @@ export class Lobby {
       if (this.plugins?.hasNotices?.()) info.content.notices = true;
     }
     // the official versions (header "Official versions"): only when the server offers more than 第二期下半, so a
-    // welcome from a default server stays identical
+    // welcome from a server narrowed to that version alone stays without `versions`
     let versions = null;
     try { versions = this.versions?.welcome?.() || null; } catch (e) { this.log.error('[lobby] the versions list failed', e); }
     if (versions) info.versions = versions;

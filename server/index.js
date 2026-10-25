@@ -6,7 +6,9 @@
 //                      this server offers (SP_VERSIONS / SP_VERSION_DEFAULT / SP_MAX_VERSION_HOSTS — versions.js below)
 //   versions.js        the official versions (DESIGN §35.23, M1): each enabled one's cs, data, manifest
 //                      (/cs/<cs16>/index.json) and data directory (/data/versions/<slug>/); their matches run in match
-//                      hosts of their own (match/host/, kind 'version') — none when only 第二期下半 is enabled (the default)
+//                      hosts of their own (match/host/, kind 'version') — the pool exists when another version is
+//                      enabled (the default: all four) and forks a process on the first match of one, never at boot;
+//                      none when only 第二期下半 is enabled
 //   http/websocket.js  session wiring (SessionRegistry → Lobby → Network) and the WebSocket at /ws (maxPayload 64 KB,
 //                      permessage-deflate from 1 KB; refused at upgrade with 404 / 429 per network / 503)
 //   http/static.js     the static mounts (/ → public/, /data/, /shared/, /sim/ `.js` only), the /data.js browser stand-in,

@@ -39,7 +39,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from '../../vendor/hooks.module.js';
 import { html, Icon, MicroLabel, Button, TierChip, TextField, Countdown, Spinner, confirmDialog, hasDeadline, Modal, Fragment } from '../ui/components.js';
-import { OperatorImage, Img, UnitThumb } from '../ui/gameComponents.js';
+import { OperatorImage, Img, UnitThumb, PromotionIcon } from '../ui/gameComponents.js';
 import { profGlyphUrl, subProfIconUrl, bondIconUrl, uiUrl } from '../ui/assetUrls.js';
 import { GarrisonBlock } from '../ui/detailPanel.js';
 import { data, useData, localAsset, DATA_FILES } from '../data.js';
@@ -343,8 +343,8 @@ export function DeckCard({ m, chess, golden, entries, ops = {}, selected = false
       <div class="lo-op__rail">
         <${TierChip} tier=${chess.tier} size="sm" class="lo-op__tier" />
         <span class="lo-op__lv" title=${t('普通 / 精锐等级')}>
-          <span class="lo-op__lvrow"><i class="lo-op__chev"></i><b class="num">${chess.status?.level ?? '—'}</b></span>
-          ${golden ? html`<span class="lo-op__lvrow is-elite"><i class="lo-op__chev"></i><b class="num">${golden.status?.level ?? '—'}</b></span>` : null}
+          <span class="lo-op__lvrow"><${PromotionIcon} m=${m} phase=${chess.status?.phase} class="lo-op__phase" /><b class="num">${chess.status?.level ?? '—'}</b></span>
+          ${golden ? html`<span class="lo-op__lvrow is-elite"><${PromotionIcon} m=${m} phase=${golden.status?.phase} class="lo-op__phase" /><b class="num">${golden.status?.level ?? '—'}</b></span>` : null}
         </span>
         ${changed ? html`<span class="lo-op__mark" title=${t('已调整')} aria-label=${t('已调整')}></span>` : null}
       </div>

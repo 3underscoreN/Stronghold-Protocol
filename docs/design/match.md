@@ -39,6 +39,14 @@ LOBBY(room) → INFO_CHECK (co-op 25 s; solo and any single-human match untimed 
 ```
 Solo FUNNY has 9 rounds (boss at R9); everything is read from `data/config.json → modes[modeId]`.
 
+Shop layouts are version-specific (`config.modes[modeId].shopSlots`, official
+`activity.AUTOCHESS_SEASON[season].shopLevelDataDict[modeId][level].charChessCount` / `itemCount`). Both 第一期
+builds have no equipment slot at levels 1–4 and one at 5–6; 第二期上半 and the default have one at 1–6 in every
+lobby mode. Training, which the lobby does not offer, has one only at 5–6 in every version. An upgrade opens
+new slots empty; refresh / the next round fills them. The private shop view includes its actual `{ chess, item }`
+layout so an empty equipment slot stays in the equipment column. A mode with zero equipment slots shows no sold
+equipment placeholder. Verification and sources: [§36.1](../history/0.3.3.md).
+
 A first-season solo (`config.version.rules.soloTimed`, DESIGN §35.22.7) is not `soloUntimed` unless the room's
 「不限时」 is on (`room.setSoloUnlimited`, default off; `room.state` omits `soloUnlimited` unless true; the match is built
 with `opts.soloUnlimited`, DESIGN §35.23.10). While it is off, INFO_CHECK, the strategy draft, 机变 and preparation use
@@ -67,6 +75,14 @@ Piece = { uid, kind:'chess'|'item'|'token', id /* chessId (golden id if elite) |
 ```
 
 Intent handlers (validate → mutate → recompute bonds → push private view): `buy(slot)`, `refresh()`, `freeze()`, `levelUp()`, `sell(uid)`, `move(uid, to)`, `equip(itemUid, targetUid, replaceUid?)`, `useArt(itemUid, row, col)`, `destroy(uid)`, `pickReward(idx)`, `pickChoice(idx)`, `setReady(bool)`. Every handler rejects when the phase forbids it (only PREP allows board/shop mutations; SP_DRAFT allows `pickChoice` only; reward pick allowed in PREP). Invalid intents return `error` with a code from `shared/constants.js → ERR` — the server never throws on bad input.
+
+在所有官方版本的未就绪 PREP，干员手牌↔场上互换复用原有两个位置；休整区满或部署数达到上限均不阻止
+合法互换，两个方向相同。手牌内、场上内互换同理；地形／召唤物合法性仍逐个检查。真正新增部署仍检查
+部署上限，普通撤退仍需要手牌空位；满手牌仍拒绝购买和奖励选择，包括可立即合成的第三张。
+**有意偏差（INTENTIONAL DEVIATION）：**官方第一期上／下半不允许满整备区互换，第二期才加入
+（[官方公告 5114](https://ak.hypergryph.com/news/5114)）。维护者在 2026-10-25 阅知该证据后，明确决定
+「第一期也允许互换」，因此取代 0.3.2 的第一期限制，作为四版本共用的便利功能保留
+（[§36.2](../history/0.3.3.md#362-满休整区互换回归round53-benchswap2026-10-25)）。
 
 Summons (§20.1): an operator on the board sends its manually deployable summons to the hand — deploy-limit copies in one stack, no deploy slot (tokens.json `placeable`, `gamedata.placeableTokens`); moving or swapping it sends its placed summons back to their stack, withdrawing or selling it removes them. A range-bound summon (tokens.json `ownerRange`: 狼群, 流形) goes only on a tile of its owner's attack range (`PlayerState._legal` / `summonRange`); in a swap each piece is checked from the tile it ends on; an in-place re-orientation or promotion that leaves it outside sends it back to its stack with a toast (one still inside stays [ASSUMED], user-confirmed 2026-10-03), and a re-orientation whose lifted summon would have no room is refused with `HAND_FULL`; on the other paths it leaves the board and joins the expandable temp queue (§32.14.21).
 
@@ -243,7 +259,9 @@ singleton (the kits, builtinMeta, the meta registry, the official-bounds cache) 
   stop reasons 'plugin-crash' / 'plugin-hang' / 'plugin-start';
 - **version hosts** (`kind: 'version'`, §35.23, M1): one per enabled official version other than 第二期下半 (its `cs`,
   `server/versions.js`), at most `maxHosts` (default: one per such version; `SP_MAX_VERSION_HOSTS`), counted apart from
-  the plugin hosts; log lines `[versions]` with the version's id as the host label; stop reasons 'version-crash' /
+  the plugin hosts. Nothing set enables all four, so that cap is three (§35.23.11). A host is forked on the first match
+  of that version, never at boot; an idle server has zero version workers. Log lines `[versions]` with the version's id
+  as the host label; stop reasons 'version-crash' /
   'version-hang' / 'version-start' (the room is told `本局模拟出错，已结束` / `本局模拟长时间无响应，已结束` /
   `该版本的模拟无法启动`); a full pool refuses the start with `INTERNAL` 'version hosts busy'. The host installs the
   version's own official-bounds snapshot, and refuses (`failed` → 'version-start') a match whose `opts.version` (absent:

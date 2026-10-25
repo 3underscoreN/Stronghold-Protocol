@@ -12,7 +12,8 @@
 //     until they are translated — a version's data carries no translations yet). In the lobby a pick is this browser's
 //     choice at once (setLobbyVersion); in a room the host's pick proposes the switch (room.proposeVersion — the seated
 //     doctors vote, ui/versionVote.js), everybody else reads it (由创建者发起).
-// Texts go through t() (docs/I18N.md).
+// Texts go through t() (docs/I18N.md). [ASSUMED] The existing book glyph represents an archived event period;
+// the room's version controls use the same glyph.
 
 import { useState } from '../../vendor/hooks.module.js';
 import { html, Button, Icon, Modal, Spinner } from './components.js';
@@ -82,13 +83,13 @@ export function VersionSwitch() {
   // one version only (not 第二期下半): what the server plays, nothing to choose
   if (versions.length === 1) {
     return html`<span class="verchip verchip--ro" data-testid="version-switch" data-version=${current} title=${t('本服务器的游戏版本')}>
-      <${Icon} name="hourglass" /><span class="verchip__label">${versionLabel(current)}</span>${load ? html`<small class="verchip__state">${load}</small>` : null}
+      <${Icon} name="book" /><span class="verchip__label">${versionLabel(current)}</span>${load ? html`<small class="verchip__state">${load}</small>` : null}
     </span>`;
   }
   return html`<span class="verchip-wrap">
     <button type="button" class=${cx('verchip', current !== DEFAULT_VERSION && 'is-other', failed && 'is-failed')} data-testid="version-switch" data-version=${current}
         aria-busy=${loading ? 'true' : 'false'} onClick=${() => setOpen(true)} title=${t('切换大厅版本（只影响本机）')} aria-haspopup="dialog">
-      <${Icon} name="hourglass" /><span class="verchip__k">${t('版本')}</span><span class="verchip__label">${versionLabel(current)}</span>
+      <${Icon} name="book" /><span class="verchip__k">${t('版本')}</span><span class="verchip__label">${versionLabel(current)}</span>
       ${loading ? html`<${Spinner} size="sm" />` : null}${load ? html`<small class="verchip__state">${load}</small>` : null}
     </button>
     ${failed ? html`<button type="button" class="verchip__retry" data-testid="version-retry" onClick=${retryContentSet}>${t('重试')}</button>` : null}

@@ -528,6 +528,7 @@
 .rs-pill {
   position: relative;
   display: inline-flex;
+  max-width: 100%;
   align-items: center;
   gap: .14rem;
   height: max(.68rem, 32px, calc(40px * var(--sp-ui, 1)));
@@ -537,7 +538,7 @@
   border-radius: 999px;
   box-shadow: 0 .04rem .16rem rgba(0, 0, 0, .5);
 }
-.rs-pill__diff {
+.rs-pill__diff, .rs-pill__ver {
   display: inline-flex;
   align-items: center;
   gap: .08rem;
@@ -547,13 +548,15 @@
   font-size: calc(.2 * var(--t));
   font-weight: 800;
   white-space: nowrap;
-  color: var(--d-color);
-  background: rgba(255, 255, 255, .06);
-  background: color-mix(in srgb, var(--d-color) 22%, #151616);
   border: 0;
   border-radius: 999px;
 }
-.rs-pill__diff .icon { width: 1.2em; height: 1.2em; }
+.rs-pill__diff {
+  color: var(--d-color);
+  background: rgba(255, 255, 255, .06);
+  background: color-mix(in srgb, var(--d-color) 22%, #151616);
+}
+.rs-pill__diff .icon, .rs-pill__ver .icon { flex: none; width: 1.2em; height: 1.2em; }
 .rs-pill__code { font-size: calc(.13 * var(--t)); color: #9aa19e; }
 .rs-pill__diff:disabled { cursor: default; }
 .rs-pill__diff:hover:not(:disabled), .rs-pill__diff:focus-visible { filter: brightness(1.2); }
@@ -738,7 +741,7 @@
   .rs-brief ul { font-size: min(calc(.16 * var(--t)), calc(13px + var(--t-step))); line-height: calc(1.35em - max(0px, var(--t-step))); }
   /* the difficulty's name in its 40 px pill and the key's 复制 in its 26 px button: capped so the line stays inside (a
      pixel more a step above 中). [ASSUMED] the caps */
-  .rs-pill__diff { font-size: min(calc(.28 * var(--t)), calc(20px + var(--t-step))); }
+  .rs-pill__diff, .rs-pill__ver { font-size: min(calc(.28 * var(--t)), calc(20px + var(--t-step))); }
   .rs-key__code { font-size: calc(.36 * var(--t)); }
   .rs-key__copy { font-size: min(calc(.26 * var(--t)), calc(18px + var(--t-step))); }
   /* English 「Copy」's descenders came within 0.1 px of the button's bottom at 特大 (its cap top 7.4 px below the top): set
@@ -784,12 +787,13 @@
 /* ---- official versions (DESIGN §35.23): the version pill beside the difficulty, ⚙'s 版本 row, the banner; the name ends
    in an ellipsis in the pill (a phone, a long language) ---- */
 .rs-clock__ver { margin-left: .1rem; }
+/* The tooltip must carry the pill's height: an auto-height wrapper makes its child's 78% resolve to auto. */
+.rs-pill__version { height: 100%; min-width: 0; align-items: center; }
 .rs-pill__ver {
-  display: inline-flex; align-items: center; gap: .06rem; min-width: 0; max-width: 2.6rem; height: 78%; padding: 0 .16rem;
-  font: inherit; font-size: calc(.16 * var(--t)); font-weight: 700; white-space: nowrap;
-  color: #cfe9ff; background: rgba(120, 196, 255, .12); border: 0; border-radius: 999px;
+  min-width: 0; max-width: 2.6rem;
+  color: #cfe9ff; background: rgba(120, 196, 255, .12);
 }
-.rs-pill__ver .icon { flex: none; width: 1.1em; height: 1.1em; color: #9fd3ff; }
+.rs-pill__ver .icon { color: #9fd3ff; }
 .rs-pill__vername { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .rs-pill__ver:disabled { cursor: default; opacity: .7; }
 .rs-pill__ver.is-ro { cursor: help; }
@@ -804,7 +808,6 @@
 /* a short screen (a phone in landscape): the seats and the footer keep the height — the strip floats over the seats while
    the vote runs (it wraps and scrolls inside), the banner gives its line up (the pill's tooltip says it) */
 @media (max-height: 520px) {
-  .rs-pill__ver { max-width: 1.9rem; font-size: calc(.24 * var(--t)); }
   .rs-verbanner { display: none; }
   .rs .vervote {
     position: fixed; left: 50%; top: 50%; z-index: 30; width: min(calc(100vw - 24px), 9rem); max-height: 70svh; margin: 0; overflow-y: auto;

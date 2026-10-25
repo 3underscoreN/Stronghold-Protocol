@@ -1422,13 +1422,14 @@ function MatchScreen() {
     return () => screen.removeEventListener('pointerdown', onDown, true);
   }, []);
 
-  // The underframe belongs to the selected field piece. Keep it while using its own actions or
-  // tapping the field (which handles selection separately), but dismiss it on other HUD content.
+  // The underframe belongs to the selected field piece. Keep it while using its actions, detail
+  // card or bond popup: clearing selection on pointerdown can move the card before the click.
+  // Field presses handle selection separately; other HUD content still dismisses it (#792).
   useEffect(() => {
     const screen = hudElRef.current?.parentElement;
     if (!screen) return undefined;
     const onDown = (e) => {
-      if (!live.current.sel || e.target?.closest?.('.uframe, .gm__field')) return;
+      if (!live.current.sel || e.target?.closest?.('.uframe, .gm__field, .dpanel, .bpop')) return;
       setSel(null);
     };
     screen.addEventListener('pointerdown', onDown, true);

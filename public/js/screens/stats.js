@@ -20,7 +20,7 @@
 // room the row offers 切换到「X」查看 (the page shows that version while the replay is open — the store's `replayVersion`,
 // versions.js shownVersion — and the settlement opens once its data is checked; closing the replay or 统计数据 clears it,
 // the lobby preference is never touched); in a room it says the room's version decides the data; a version this server
-// does not offer (welcome.versions, e.g. a default server) is not offered as a switch. The replay's wait always keeps
+// does not offer (welcome.versions, e.g. a server narrowed to 第二期下半) is not offered as a switch. The replay's wait always keeps
 // 返回统计 (a failed version set offers 重试). A replay opened in a room sets `replayVersion` too (the room's version comes
 // first, so nothing changes while seated): a room left under the open replay keeps that version shown.
 // 成就统计 counts the season of the version shown. 卫戍成就's peak lineup (chess and item ids) is drawn only with the data

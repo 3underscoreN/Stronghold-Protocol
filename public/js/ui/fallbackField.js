@@ -19,6 +19,7 @@
 // A tap on the ground itself emits tileClick { row, col } like render/app.js does, so a special terrain tile
 // explains itself on this board too (GitHub issue #184).
 
+import { pieceItemProgress, progressLabel } from '../itemProgress.js';
 import { render } from '../../vendor/preact.module.js';
 import { html, TierChip } from './components.js';
 import { GEO } from '../../../shared/constants.js';
@@ -188,8 +189,14 @@ export function createFallbackView(host, opts = {}) {
       ${tier && p.kind !== 'token' ? html`<${TierChip} tier=${tier} golden=${golden} size="sm" class="ff-piece__tier" />` : null}
       ${p.kind === 'chess' && Array.isArray(p.items) && p.items.length ? html`<div class="ff-piece__items">${p.items.slice(0, 2).map((it) => html`<i key=${it.uid}></i>`)}</div>` : null}
       ${p.kind === 'token' && p.count > 1 ? html`<b class="ff-piece__count">×${p.count}</b>` : null}
+      <${EquipmentProgress} rows=${pieceItemProgress(p)} />
       ${wedge ? html`<i class="ff-piece__dir" aria-hidden="true"></i>` : null}
     </div>`;
+  }
+
+  function EquipmentProgress({ rows }) {
+    const labels = (rows || []).map(progressLabel).filter(Boolean);
+    return labels.length ? html`<span class="ff-progress">${labels.map((label, i) => html`<span key=${i}>${label}</span>`)}</span>` : null;
   }
 
   function onDown(e, p) {
@@ -289,6 +296,7 @@ export function createFallbackView(host, opts = {}) {
         onContextMenu=${(e) => { e.preventDefault(); emit('pieceClick', { unitId: id, uid: info.uid ?? null, unit: info, button: 2, clientX: e.clientX, clientY: e.clientY }); }}>
       <div class="ff-unit__art">${src ? html`<img src=${src} alt="" draggable=${false} />` : html`<span>${[...(info.name || '?')][0]}</span>`}</div>
       <div class="ff-unit__bars"><i class="hp" style=${`width:${hpPct}%`}></i>${!enemy && spMax > 0 ? html`<i class="sp" style=${`width:${spPct}%`}></i>` : null}</div>
+      ${!dead ? html`<${EquipmentProgress} rows=${info.itemProgress} />` : null}
     </div>`;
   }
 

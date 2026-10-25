@@ -1148,7 +1148,10 @@ export class AudioManager {
     else if (this.uiVoices >= 12) return;
     else this.uiVoices += 1;
     const release = () => { if (limited) this.limiter.release(url); else this.uiVoices = Math.max(0, this.uiVoices - 1); };
+    const fieldToken = this.poolFieldToken;
     this._buffer(url).then((buf) => {
+      // Generic battle cues share the pools' field lifetime, including a late plugin failure's fallback.
+      if (limited && fieldToken !== this.poolFieldToken) { release(); return; }
       if (!buf && again && this.fellBack.has(url)) {
         release();
         const next = again();

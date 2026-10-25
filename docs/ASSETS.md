@@ -539,6 +539,10 @@ not download URLs; the actual selected alternative supplies its pitch range and 
 pitch in that range and schedules the delay on Web Audio's clock. Limits/takeover and the retained [ASSUMED]
 remake anti-spam rules are specified in [design/client.md](design/client.md#skill-mode-sound-and-delayed-models-2817-2822).
 
+`AudioManager` keeps pending generic battle cues on the same field generation as the bank pools. A decode that
+finishes after field replacement, return to preparation or screen cleanup releases its voice without starting the
+old cue or its plugin fallback. UI feedback is independent of this field generation.
+
 ### The `Spine` object
 
 ```js

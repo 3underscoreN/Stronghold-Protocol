@@ -1,4 +1,4 @@
-// #680: official bank limits, takeover, pitch and delay; no real audio, network or clocks.
+// #680: official bank limits, takeover, pitch, delay and field sound cleanup; no real audio, network or clocks.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { AudioManager } from '../../public/js/audio.js';
@@ -420,4 +420,55 @@ test('battle/screen cleanup stops playing pools and invalidates delays and decod
   resolve({ duration: 2 }); await flush(); f.advance(2000);
   assert.equal(f.sources.length, 1);
   assert.equal(f.a.poolLoads.size, 0);
+});
+
+for (const [reason, cleanup] of [
+  ['field replacement', a => a.setFieldUnits([])],
+  ['battle exit', a => a.stopPoolSounds()],
+]) test(`a generic leak alarm still decoding at ${reason} never starts afterwards`, async (t) => {
+  const f = fixture(t);
+  f.a.getManifest = () => ({ audio: { sfx: { battle: { leak: URL } } } });
+  let resolve;
+  f.a._buffer = () => new Promise(r => { resolve = r; });
+  f.a.handleBattleEvents([['leak', 7]]);
+  assert.equal(f.a.limiter.active, 1);
+  cleanup(f.a);
+  resolve({ duration: 1.44 }); await flush();
+  assert.equal(f.sources.length, 0, 'the old field cannot start an alarm after its decode finishes');
+  assert.equal(f.a.limiter.active, 0, 'the obsolete request releases its voice');
+});
+
+test('a current generic battle sound plays and releases its voice once', async (t) => {
+  const f = fixture(t);
+  f.a.getManifest = () => ({ audio: { sfx: { battle: { heal: URL } } } });
+  f.a.battle('heal'); await flush();
+  assert.equal(f.sources.length, 1);
+  assert.equal(f.a.limiter.active, 1);
+  f.sources[0].onended(); f.advance(3000);
+  assert.equal(f.a.limiter.active, 0, 'natural end and safety timer do not release twice');
+});
+
+test('changing the field preserves a pending UI click', async (t) => {
+  const f = fixture(t);
+  f.a.getManifest = () => ({ audio: { sfx: { ui: { click: URL } } } });
+  let resolve;
+  f.a._buffer = () => new Promise(r => { resolve = r; });
+  f.a.sfx('click'); f.a.setFieldUnits([]);
+  resolve({ duration: 0.1 }); await flush();
+  assert.equal(f.sources.length, 1, 'UI feedback does not belong to the departed battle');
+  f.sources[0].onended();
+  assert.equal(f.a.uiVoices, 0);
+});
+
+test('an obsolete generic plugin sound cannot start its fallback after battle cleanup', async (t) => {
+  const f = fixture(t);
+  let resolve, repicks = 0;
+  f.a._buffer = () => new Promise(r => { resolve = r; });
+  f.a.fellBack.add(URL);
+  f.a._play(URL, { limited: true, again: () => { repicks++; return '/fallback.mp3'; } });
+  f.a.stopPoolSounds();
+  resolve(null); await flush();
+  assert.equal(repicks, 0, 'an old failure does not replay into the new field');
+  assert.equal(f.sources.length, 0);
+  assert.equal(f.a.limiter.active, 0);
 });

@@ -58,10 +58,12 @@ test('short screens: the empty key field takes the placeholder\'s size; 同盟�
   }
 });
 
-test('text-fit: a player\'s name may end in a line clamp\'s ellipsis and break inside a word, nothing else may', () => {
+test('text-fit: ellipsis exceptions stay scoped; only player names may break inside a word', () => {
   const src = readFileSync(path.join(ROOT, 'test/e2e/text-fit.mjs'), 'utf8');
   assert.match(src, /webkitLineClamp/);
-  assert.match(src, /if \(!cut\.matches\('\.seat__name, \.specbar__who, \.room-mode'\)\) out\.push\(`ellipsis \$\{label\}`\);/);
+  // §35.23.12: callers may allow the compact version pill while checking its accessible name and bounds.
+  assert.ok(src.includes("export function textProblems(rootSel, extraEllipsis = '')"));
+  assert.ok(src.includes("if (!cut.matches(`.seat__name, .specbar__who, .room-mode${extraEllipsis ? `, ${extraEllipsis}` : ''}`)) out.push(`ellipsis ${label}`);"));
   assert.match(src, /!breakOk\(p, c\) && !el\.closest\('\.seat__name'\)/);
 });
 

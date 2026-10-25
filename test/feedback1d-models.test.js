@@ -40,6 +40,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ASSETS = path.join(ROOT, 'public/assets');
 const readJson = (rel) => JSON.parse(readFileSync(path.join(ROOT, rel), 'utf8'));
 const SLUGS = ['enemy_1305_mhslim', 'enemy_1305_mhslim_2'];
+const EARLIER = ['enemy_1201_sfzhi', 'enemy_1249_lysdb', 'enemy_1254_lypa', 'enemy_1275_dwlock',
+  'enemy_1373_ltnhor_2', 'enemy_1376_ltndru'];
+const LOCAL_ENEMIES = [...SLUGS, ...EARLIER].sort();
 const COMMITTED = readJson(LOCAL_ENEMY_SPINES_FILE).models;
 const MANIFEST = readJson('data/assets.json');
 
@@ -91,7 +94,7 @@ describe('D3: the official slug models are an optional overlay of the web alias'
   });
 
   test('the committed metadata: both ELEMENT slugs, file names of their extract.py group, roles resolved', () => {
-    assert.deepEqual(Object.keys(COMMITTED).sort(), SLUGS);
+    assert.deepEqual(Object.keys(COMMITTED).sort(), LOCAL_ENEMIES);
     for (const id of SLUGS) {
       const m = COMMITTED[id];
       assert.equal(m.skel, `${id}.skel`);
@@ -104,15 +107,20 @@ describe('D3: the official slug models are an optional overlay of the web alias'
     }
   });
 
-  test('data/assets.json never depends on the local extraction (no /assets/local/ URL; the web model always there)', () => {
+  test('data/assets.json keeps local models as metadata; the slugs retain their web aliases', () => {
     const urls = [];
     const walk = (n) => { if (typeof n === 'string') { if (n.includes('/assets/local/')) urls.push(n); } else if (n && typeof n === 'object') Object.values(n).forEach(walk); };
     walk(MANIFEST);
     assert.deepEqual(urls, [], 'setup / doctor / the manifest tests count every /assets/ URL as required');
     for (const [id, e] of Object.entries(MANIFEST.enemies)) {
       if (!e.spineLocal) continue;
-      assert.ok(SLUGS.includes(id), id);
+      assert.ok(LOCAL_ENEMIES.includes(id), id);
       assert.deepEqual(e.spineLocal, { group: `spine/enemy/${id}`, ...COMMITTED[id] }, `${id}: the committed metadata`);
+      if (EARLIER.includes(id)) {
+        assert.ok(validSpine(spineEntry(MANIFEST, id, { local: localManifest([id]) })), `${id}: official local model`);
+        assert.ok(e.icon, `${id}: icon fallback without a local install`);
+        continue;
+      }
       assert.ok(validSpine(spineEntry(MANIFEST, id)), `${id}: a web model without the local client`);
       assert.equal(MANIFEST.enemies[id].spineAliasOf, 'enemy_1007_slime');
       assert.deepEqual(spineEntry(MANIFEST, id), MANIFEST.enemies.enemy_1007_slime.spine, `${id}: the plain 源石虫 on the web`);
@@ -348,7 +356,7 @@ describe('D3: tools/local-extract/extract.py enemy Spine job (no UnityPy needed)
   test('--print-jobs lists the enemy models; container matching and --only selection', () => {
     const r = spawnSync(PY, [path.join(TOOL, 'extract.py'), '--print-jobs'], { encoding: 'utf8', env: ENV });
     assert.equal(r.status, 0, r.stderr);
-    assert.deepEqual(JSON.parse(r.stdout).enemySpines, { bundles: 'refs/arts/enm_art_*.ab', sub: 'spine/enemy', ids: SLUGS });
+    assert.deepEqual(JSON.parse(r.stdout).enemySpines, { bundles: 'refs/arts/enm_art_*.ab', sub: 'spine/enemy', ids: LOCAL_ENEMIES });
     const out = py(`W = set(e.ENEMY_SPINES)\n`
       + `print(json.dumps([e.enemy_spine_id('Assets/Torappu/Arts/Enemies/Spines/enemy_1305_mhslim/2/enemy_1305_mhslim_2_SkeletonData.asset', W),`
       + ` e.enemy_spine_id('Assets/Torappu/Arts/Enemies/Spines/enemy_1305_mhslim/1/enemy_1305_mhslim_SkeletonData.asset', W),`

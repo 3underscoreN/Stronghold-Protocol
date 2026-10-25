@@ -10,7 +10,9 @@
 // (800×600 – 1920×1080) in all five languages at all four 文字大小: every line of visible text inside each box that clips
 // it or draws a box around it (a button, a chip, the card), inside the screen, over no other label's text and not broken
 // inside a word (Korean between two syllables too), no line starting with a small kana, ー or a closing mark; only a
-// player's name (or a plugin mode's) may end in an ellipsis; nothing makes the page scroll. On the phones also a doctor
+// player's name, a plugin mode's name or the compact version pill's name may end in an ellipsis; the pill keeps its full
+// accessible name and its control inside the footer (versions-fit's existing policy; §35.23.11). Nothing makes the page
+// scroll. On the phones also a doctor
 // who readied, a modded room's tags (已同意, 插件内容就绪 / 载入中 / 校验失败) and mode, and a doctor whose connection
 // dropped (written into the page's store: no plugin pack here). A box that scrolls (the picker's grid) counts as holding
 // its text; on the phones 独立模拟's briefing must not scroll. Every page finishes with zero console errors
@@ -78,7 +80,30 @@ describe('the waiting room\'s text fit (real server, headless Chrome)', { skip: 
   /** Waits out the room's entrance and the 转场 (the cards land, the bottom bar rises). */
   const settled = (page) => page.waitForFunction(() => !document.getAnimations()
     .some((a) => /^(rs|tr|rseat)-/.test(String(a.animationName)) && a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity), { timeout: 8000 });
-  const check = async (page, sel = '.room-screen') => { await page.evaluate(() => document.fonts.ready); return page.evaluate(textProblems, sel); };
+  const check = async (page, sel = '.room-screen') => {
+    await page.evaluate(() => document.fonts.ready);
+    // §35.23.11 exposes the compact version pill on a default server too. versions-fit already permits its ellipsis;
+    // keep that exception local to this suite, with the full accessible name and the control's actual geometry checked.
+    const bad = await page.evaluate(textProblems, sel, '[data-testid="room-version"] .rs-pill__vername');
+    if (sel === '.room-screen') bad.push(...await page.evaluate(() => {
+      const out = [];
+      const buttons = [...document.querySelectorAll('[data-testid="room-version"]')];
+      if (!buttons.length) out.push('default server missing the version pill');
+      for (const button of buttons) {
+        const r = button.getBoundingClientRect(), p = button.closest('.rs-pill').getBoundingClientRect();
+        const label = button.querySelector('.rs-pill__vername').textContent.trim();
+        if (!r.width || !r.height) out.push('version pill is hidden');
+        if (!label || !button.getAttribute('aria-label')?.includes(label)) out.push('version pill missing its full accessible name');
+        if (r.left < p.left - 1 || r.right > p.right + 1 || r.top < p.top - 1 || r.bottom > p.bottom + 1
+          || r.left < -1 || r.right > innerWidth + 1 || r.top < -1 || r.bottom > innerHeight + 1) out.push('version pill outside its footer');
+        // The synthetic trusted-plugin fixture may have its consent modal above the room; controls behind it are inert.
+        if (!button.disabled && !document.querySelector('.modal, .guide') && !button.closest('[inert]')
+          && !button.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))) out.push('version pill centre is covered');
+      }
+      return out;
+    }));
+    return bad;
+  };
 
   /**
    * One language through `sizes` × `screens` (touch on phones): the co-op room before anyone joined, then with a doctor,

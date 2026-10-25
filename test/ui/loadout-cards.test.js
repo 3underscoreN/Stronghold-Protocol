@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { VERSIONS } from '../../shared/versions.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 globalThis.fetch = async (url) => {
@@ -20,7 +21,8 @@ const mem = new Map();
 globalThis.localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
 const { DeckCard, TierMark, DeckBar, DeckHelp, loadoutViewPref } = await import('../../public/js/screens/loadout.js');
 const { data } = await import('../../public/js/data.js');
-const { OperatorImage, Img } = await import('../../public/js/ui/gameComponents.js');
+const { OperatorImage, Img, PromotionIcon } = await import('../../public/js/ui/gameComponents.js');
+const { OpCard } = await import('../../public/js/screens/settle.js');
 await data.loadAll('chess', 'garrisons', 'assets', 'bonds', 'effects', 'backups');
 
 const get = (id) => data.lookup('chess', id);
@@ -87,6 +89,48 @@ test('a card\'s picture is an OperatorImage portrait (the owner\'s picture-only 
   assert.equal(imgs[0].props.portrait, true);
   assert.equal(imgs[0].props.avatarFallback, true);
   assert.equal(imgs[0].props.ownerId, undefined, 'the local picker: this browser\'s own outfit');
+});
+
+test('#811: every version, tier and normal / elite form uses its actual promotion phase and level', () => {
+  const m = data.get('assets');
+  // activity_table AUTOCHESS_SEASON charChessDataDict.status (PHASE_1 / PHASE_2), both seasons.
+  const levels = { 1: [[1, 55], [2, 50]], 2: [[1, 60], [2, 55]] };
+  for (const version of VERSIONS) {
+    const chess = JSON.parse(readFileSync(path.join(ROOT, 'data', version.dir, 'chess.json'), 'utf8'));
+    const backups = JSON.parse(readFileSync(path.join(ROOT, 'data', version.dir, 'backups.json'), 'utf8'));
+    for (const c of Object.values(chess)) {
+      assert.deepEqual([c.status.phase, c.status.level], (levels[c.tier] || [[2, 1], [2, 60]])[Number(c.isGolden)], `${version.id} ${c.chessId}`);
+      if (c.isGolden) continue;
+      const forms = [c, chess[c.goldenId]].filter(Boolean);
+      const rows = byClass(card({ m, chess: c, golden: forms[1] }), 'lo-op__lvrow');
+      assert.equal(rows.length, forms.length);
+      rows.forEach((row, i) => {
+        const icons = find(row, (v) => v.type === PromotionIcon);
+        assert.equal(icons.length, 1, `${version.id} ${forms[i].chessId}: a phase icon, never a fixed two-bar glyph`);
+        const icon = PromotionIcon(icons[0].props);
+        assert.equal(icon.props.src, m.ui[`elite/elite_${forms[i].status.phase}`]);
+        assert.equal(textOf(icon.props.fallback), `E${forms[i].status.phase}`);
+        assert.equal(textOf(row), String(forms[i].status.level));
+      });
+    }
+    // Backups supply the actual forms for both stand-ins and DIY operators; their phase is not their rarity.
+    for (const unit of Object.values(backups.units)) for (const form of Object.values(unit.forms)) {
+      const rec = { ...unit, ...form, tier: 1, isGolden: true };
+      const tree = OpCard({ u: { id: unit.charId }, gd: { m, backups, chess: () => rec }, i: 0 });
+      const icon = find(tree, (v) => v.type === PromotionIcon)[0];
+      assert.equal(PromotionIcon(icon.props).props.src, m.ui[`elite/elite_${form.status.phase}`]);
+      assert.equal(textOf(byClass(tree, 'sop__lv')[0]), String(form.status.level));
+    }
+  }
+});
+
+test('promotion icons: E0, E1 and E2 use the official images or a phase-specific missing-art fallback', () => {
+  for (const phase of [0, 1, 2]) {
+    const icon = PromotionIcon({ m: null, phase, class: 'phase-test' });
+    assert.equal(icon.props.src, null);
+    assert.equal(textOf(icon.props.fallback), `E${phase}`);
+  }
+  for (const phase of [undefined, null, -1, 3]) assert.equal(PromotionIcon({ m: null, phase }), null);
 });
 
 test('a card follows the loadout: the chosen skill and module, a lower 潜能, the 已调整 mark, the 替补 ribbon', () => {

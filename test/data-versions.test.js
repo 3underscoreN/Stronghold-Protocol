@@ -131,6 +131,35 @@ test('profiles: the default is today\'s build; pins pick a commit per file group
 // ---------------------------------------------------------------------------------------------------
 
 for (const v of OTHERS) {
+  test(`data/${v.dir}: mode and shop fields come from this version's pinned activity table`, async (t) => {
+    const { profile } = await loadProfile(v.id);
+    const sha = pinnedShaOf(profile, 'excel/activity_table.json');
+    const source = join(ROOT, '.cache', `gamedata@${sha}`, 'excel', 'activity_table.json');
+    if (!existsSync(source)) { t.skip(`no ${source}`); return; }
+    const raw = JSON.parse(readFileSync(source, 'utf8'));
+    const act = raw.activity.AUTOCHESS_SEASON[profile.season];
+    const config = readJson(join(ROOT, 'data', v.dir), 'config');
+    for (const [id, mode] of Object.entries(config.modes)) {
+      const official = act.modeDataDict[id];
+      for (const [field, input] of Object.entries({ name: 'name', code: 'code', sortId: 'sortId', type: 'modeType',
+        difficulty: 'modeDifficulty', desc: 'desc', effectDescList: 'effectDescList', specialPhaseTime: 'specialPhaseTime',
+        activeBondIds: 'activeBondIdList', inactiveBondIds: 'inactiveBondIdList', inactiveEnemyKeys: 'inactiveEnemyKey' })) {
+        assert.deepEqual(mode[field], official[input], `${id}.${field}`);
+      }
+      const levels = Object.values(act.shopLevelDataDict[id]);
+      assert.deepEqual(mode.shopSlots, Object.fromEntries(levels.map(l => [l.shopLevel, { chess: l.charChessCount, item: l.itemCount }])), id);
+      assert.deepEqual(mode.upgradePrices, levels.slice(0, -1).map(l => l.initialUpgradePrice), id);
+      assert.deepEqual(mode.levelTagColors, Object.fromEntries(levels.map(l => [l.shopLevel, l.levelTagBgColor])), id);
+      assert.equal(mode.maxShopLevel, Math.max(...levels.map(l => l.shopLevel)), id);
+      for (const [round, built] of Object.entries(mode.rounds)) {
+        const turn = raw.autoChessData.turnInfoDataDict[id][round];
+        assert.equal(built.prepTimeData, turn.normalPhaseTime, `${id} R${round}`);
+        assert.equal(built.prepTime, mode.type !== 'SINGLE' || profile.config.rules?.soloTimed ? turn.normalPhaseTime : null, `${id} R${round}`);
+        assert.equal(built.isSpPrepare, act.battleDataDict[id][round].some(b => b.isSpPrepare), `${id} R${round}`);
+      }
+    }
+  });
+
   test(`data/${v.dir}: the 16 files, under 6 MB, config.version, the profile's counts, no effectRef, the trigger deviations of its profile, references resolve`, async () => {
     const { profile } = await loadProfile(v.id);
     const dir = join(ROOT, 'data', v.dir);
@@ -330,8 +359,24 @@ test('server/data.js: versionDataDir and getVersionData; loadData(DATA_DIR) neve
   resetVersionData();
 });
 
-test('HTTP: a default server (only 第二期下半 enabled) never serves data/versions/ (any spelling); the default data is', async () => {
-  const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true });
+const VERSION_ENV = ['SP_VERSIONS', 'SP_VERSION_DEFAULT', 'SP_MAX_VERSION_HOSTS'];
+
+/** Start a server with the version environment unset, then restore it. `extra` still wins (the `versions` option). */
+async function startVersionsServer(extra = {}) {
+  const saved = VERSION_ENV.map((k) => [k, process.env[k]]);
+  for (const [k] of saved) delete process.env[k];
+  try {
+    return await startServer({ port: 0, host: '127.0.0.1', quiet: true, ...extra });
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+test('HTTP: a server narrowed to 第二期下半 never serves data/versions/ (any spelling); the default data is', async () => {
+  const srv = await startVersionsServer({ versions: { enabled: ['act2autochess'] } });
   try {
     const get = (p) => fetch(srv.url + p, { redirect: 'manual' });
     assert.equal((await get('/data/chess.json')).status, 200);
@@ -352,6 +397,30 @@ test('HTTP: a default server (only 第二期下半 enabled) never serves data/ve
         assert.ok([400, 403, 404].includes(r.status), `${p} → ${r.status}`);
         await r.arrayBuffer();
       }
+    }
+  } finally {
+    await srv.close();
+  }
+});
+
+test('HTTP: nothing set enables every version, serves their data, and forks no version host while idle', async () => {
+  const srv = await startVersionsServer();
+  try {
+    const get = (p) => fetch(srv.url + p, { redirect: 'manual' });
+    assert.deepEqual(srv.versions.ids, VERSIONS.map((v) => v.id));
+    assert.equal(srv.versions.defaultId, DEFAULT_VERSION);
+    assert.equal(srv.versionHosts.stats().workers, 0, 'the pool exists; no child until the first match of a version');
+    assert.equal(srv.versionHosts.stats().matches, 0);
+    const health = await (await get('/healthz')).json();
+    assert.deepEqual(health.versions, {
+      enabled: VERSIONS.map((v) => v.id), default: DEFAULT_VERSION,
+      hosts: { workers: 0, matches: 0, transport: 'process' },
+    });
+    assert.equal((await get('/data/chess.json')).status, 200);
+    for (const v of OTHERS) {
+      const r = await get(`/data/${v.dir}chess.json`);
+      assert.equal(r.status, 200, v.id);
+      await r.arrayBuffer();
     }
   } finally {
     await srv.close();

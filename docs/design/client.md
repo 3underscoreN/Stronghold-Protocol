@@ -83,7 +83,7 @@ movement. Other teleport effects retain the normal distance-threshold interpolat
 
 Asset URLs (0.2.6, host bandwidth layer 1): the client takes every art, model and audio URL from `data/assets.json` and `data/local-assets.json` and builds none itself, so the content-hash segment the server puts in front (`/assets/~<hash>/…`, docs/ASSETS.md "The committed manifest and the served manifests") needs nothing on this side: `validSpine` still sees `.skel`, pixi-spine finds the atlas and its pages under the same segment (a model shares one hash), audio is fetched as `/media/~<hash>/…`. The two URLs the client derives from another file's — the 3D board's `tiles.json` beside the atlas and the token death sound beside `charDie` — are served `no-cache` (the board) or drop the segment (`shared/assetPaths.js unhashedUrl`, the sound).
 
-Enemy preview pen (`render/pen.js`, `render/app/view.js`; research 09 §2): in prep the next round's enemies (`m.private.nextEnemies`; a scouted teammate's from their `m.field`) idle in the pen, rows 14–18 × cols 7–13, no bars, facing left. The pen shows with the prep camera — the own board, its shop-folded framing (the deploy fold included), a scouted teammate's board (their pen), back from the pen view (返回战场) — and with the pen camera (🔍▶▶, `setCamera('pen')`): the 3D board builds the pen block (`boardArea` → `AREAS.normal`: rows 13–18 × cols 6–14, the pen's two red gates (15, 7) / (18, 7) with it), the 2D board draws its rows (`bandFor` / `fieldRows` 6–18: the same pen in both, only the lit rect moves) and its figures show (`showsPen` / `penShown`; `view.stats().penHidden`). At the official prep framing its front rows stand at the top right of the view, beyond the board behind the upper gate, as in the official 休整期 (research 09 §2.1; the maintainer's recording, decision of 2026-10-15), so 🔍▶▶ pans to what is already in view. The battle, 联防, boss and hidden cameras never show it, nor does the Final Assault / Hidden Core prep (its frame ends far below the pen; the round's leader stands on the boss field instead, `leaderShown`). A camera flight keeps both ends' areas and rows and shows the pen when either end does (`restView` / `flightView`), except a flight from the prep camera into a battle camera: the pen goes with the battle start (`enterBattle` also empties its figures) and comes back as the next prep's flight begins. Superseded: user playtest #2 item 6 (2026-09-29) kept the pen to the pen camera ("the battlefield with the waiting enemies above it looked wrong — after 返回战场 and in every battle"); the maintainer's decision of 2026-10-15 reversed that for the prep camera, battles stay as they were (DESIGN §32.14.30). The DOM fallback (simplified view) still shows its pen only behind 🔍▶▶.
+Enemy preview pen (`render/pen.js`, `render/app/view.js`; research 09 §2): in prep the next round's enemies (`m.private.nextEnemies`; a scouted teammate's from their `m.field`) idle in the pen, rows 14–18 × cols 7–13, no bars, facing left. The pen shows with the prep camera — the own board, its shop-folded framing (the deploy fold included), a scouted teammate's board (their pen), back from the pen view (返回战场) — and with the pen camera (🔍▶▶, `setCamera('pen')`): the 3D board builds the pen block (`boardArea` → `AREAS.normal`: rows 13–18 × cols 6–14, the pen's two red gates (15, 7) / (18, 7) also present), the 2D board draws its rows (`bandFor` / `fieldRows` 6–18: the same pen in both, only the lit rect moves) and its figures show (`showsPen` / `penShown`; `view.stats().penHidden`). At the official prep framing its front rows stand at the top right of the view, beyond the board behind the upper gate, as in the official 休整期 (research 09 §2.1; the maintainer's recording, decision of 2026-10-15), so 🔍▶▶ pans to what is already in view. The battle, 联防, boss and hidden cameras never show it, nor does the Final Assault / Hidden Core prep (its frame ends far below the pen; the round's leader stands on the boss field instead, `leaderShown`). A camera flight keeps both ends' areas and rows and shows the pen when either end does (`restView` / `flightView`), except a flight from the prep camera into a battle camera: the pen goes with the battle start (`enterBattle` also empties its figures) and comes back as the next prep's flight begins. Superseded: user playtest #2 item 6 (2026-09-29) kept the pen to the pen camera ("the battlefield with the waiting enemies above it looked wrong — after 返回战场 and in every battle"); the maintainer's decision of 2026-10-15 reversed that for the prep camera, battles stay as they were (DESIGN §32.14.30). The DOM fallback (simplified view) still shows its pen only behind 🔍▶▶. Gate collection is independent of the pen block and figures: the 3D board keeps S/E gates from the whole grid across ordinary battle cameras (PR #595, §35.69 / §35.110); only `AREAS.boss` limits gates to its own arena. The 2D fallback keeps collecting its wire boxes from drawn rows.
 
 Visuals: oblique perspective board (tilted ~30°, trapezoid tiles), raised highland blocks with side faces, road/floor/forbidden styles per research 07 §7, pulsing red gates, blue objective (3D board: `materials.js gateMaterial` after the client's `Torappu/Particles/Additive` / `AlphaBlend` — 2 · _TintColor · texture on the texture's stored values, alpha clamped; the start box tinted red (1, 0, 0) with alpha 0.134 → 0.229, the objective's additive part blue (0, 0.0897, 1) with 0.16 → 0.097, its alpha-blended part (1, 1, 1, 1), from the client's 2 s clip, `scene.js GATE_TINT` — the clip's keys are cubic segments with flat ends, a smoothstep between the two values (`gatePulse`); before, an untinted texture × a gain tuned by eye left the red box's dashes and glyph white, GitHub PR #571 comments; **[ASSUMED]** which of the clip's two renderers is which box, and white vertex colours), dashed hand pads. Units: Spine (Front/Back rule, feet anchored — flying units hover `FLY_HOVER` 1.3 tiles up, the client's 0.35 in character space, research 12, §25.13.5 — an enemy flyer from the road whatever tile it crosses (GitHub #277) —, shadow sprite on the ground), elite gold outline glow, tier chip, HP bar (green ally / red enemy), SP bar (skill ready glow; while an ammo skill runs it is the magazine instead — a yellow cell per round, emptying from the right, `b.snap ammo`, and the skill draws no standing aura, UnitInfo `ammoSkill`; with 设置「弹药数量」 on, its count `left/magazine` under it, §31.9), 斩业星熊's 我执 pool as a red bar over her drained HP bar (`b.snap neg`), 伺夜's 狼群 count as a row of diamonds under the bars, the lit ones the 狼影 left (`b.snap wolves`; 0.2.2, GitHub PR #303 / #378 / #383), 魔王's 「微尘」 as that many sprites of her own `C_Eff_Moire_B` region circling her at 1.15 tiles and 30°/s (the hidden 5★'s own orbit; S2's `outside_radius` widens it to 2 tiles, `b.snap motes`: 3, six while S2 runs, one less for six seconds after a mote touches an operator — a decoration only: the 4★'s collision is a whole-circle check, and the hidden 5★'s ring is not drawn yet), status icons, the element gauge row under the bars — icon + white bar of the remaining 元素值, element-coloured refill during a 爆发冷却 (§18.3, §20.8); enemies drawn × their official prefab factor (enemies.json `modelScale`, §20.4); an enemy's mode — the `form` of a sim fx (`shared/protocol.js fxForm`), or UnitInfo `form` for a view built later through `render/app/info.js renderInfo` — switches clip sets (`render/units.js FORMS`: 掠海漂移体 crawl, 暴鸰 bombed, 转译基底's forms, the 逐火 embers, the leaders' 重生, 守墓石像, the 孤岛风云 prisoners' warning and 解放; closing clips timed from the fx `dur`), a one-off cast (`PROJ[kind].once`) plays once, and a local-only model's web alias is tinted (`ALIAS_TINT`: 灼热 / 炽焰源石虫, §21.14); damage numbers (phys orange-white, arts purple, true white, heal green); projectiles drawn per kind, hit sparks and melee slashes, skill activation bursts and auras (§17.3); death fade for enemies, summons and devices — a knocked-out operator stays on its tile in its held Die pose under a redeploy ring (§18.3); leak flash at the objective. Fallback when Spine missing/failed: avatar in a rarity-coloured diamond with bob/lunge tweens — a failed or timed-out model is loaded again (bounded), and a view re-resolves its model and avatar when the asset manifest arrives late or the tab is shown again (§21.27). 60 fps target with ≤ 120 units (a crowd draws its Spine units through the cached atlas, `render/impostor.js`, each refreshed every k-th frame: the refresh turns follow this frame's update order — `ctx.impostorSlot()`, a counter reset at the start of every frame — so a frame refreshes ⌊n/k⌋ or ⌈n/k⌉ of n units instead of whatever random per-unit phases gave, and a unit not refreshed for 2k frames is refreshed regardless; GitHub PR #334 by @Cloudnyco, issue #327 step 1 — its step 2, a time budget by priority, is not done; a model whose pose cannot change — `SpineActor.poseHeld()`: a knocked-out operator in the held end of its Die clip, a frozen model — is neither re-posed nor redrawn, only its clock runs, until a new clip, a revive, a wind-up, a form's closing clip, a clipping switch or a zoom past the impostor's rescale threshold; an impostor's slot is sized from every clip the unit can play — measured once per skeleton, a few frames after the model loads (`render/spine.js clipBounds`, sampled within a 2.5 ms frame budget; until then the unit is drawn directly); no model shows its setup pose (one frozen before its first update — built while stunned without a stun clip — shows its clip's first frame) —, a clip too large for that box (`render/units.js impostorBox`: mostly a deploy drop from above) is drawn directly while it plays, and the atlas draws every slot clipped to its own rectangle (a scissor rect; every batch flush gets its own vertex buffer, which Apple GPUs need), so no pose is cut and nothing is left in another unit's slot (GitHub #542, §31.6); the redeploy rings draw one shared rasterised label per number, `render/textures.js downLabel`, the same pixels as a Text of their own). Picking (which unit a press / hover / dropped item is on) and the drag target follow one rule, `render/pick.js` — the tile under the pointer (§18.1); the Spine store never hands out a skeleton whose unload is in flight (§17.1).
 
@@ -301,6 +301,21 @@ specified above.
 **Data readiness.** `data.js useData` subscribes and starts its loads, then schedules a render to re-read their
 statuses: a warm-up that settles between the initial render and the subscription must not leave a resumed match on
 正在载入模拟数据… (§35.59). Later settlements notify the same subscription.
+S.W.E.E.P. also waits for the selected official version to match the checked set on the page: settled files can still
+belong to the previous version while the new set downloads. During that interval it shows 正在读取报告…; a failed
+version check shows 版本数据校验失败 and 重试 (§35.112).
+
+**S.W.E.E.P. animation independence (§35.113).** The report, enemy codex, their detail panels and their Modal veils
+show content immediately, with no opacity entry animation. Paused or disabled animations must leave the report,
+its loading/error state, all tiles and newly selected details visible. Ready-data notifications keep the mounted
+report and detail nodes; an ordinary update must not restart entry effects. The decorative mist may drift without
+affecting content visibility; reduced motion stops it and the tile hover transitions. Other screens' entry effects
+are inventoried in §35.113; this fix changes only S.W.E.E.P.
+
+The room footer's version and difficulty pills share their height, padding, font size and radius, including the
+short-screen text rules. The version's Tooltip wrapper carries the footer height so the child's percentage height
+resolves correctly. [ASSUMED] The existing book glyph denotes the archived event period, also in the lobby switch
+and room settings; the lobby retains its own top-bar sizing (§35.111).
 
 Strategy-draft match information (§35.6): the read-only modal reuses the briefing's announced leader,
 battlefield and special enemy blocks alongside the existing bonds and banned operators. Its body scrolls within
@@ -495,7 +510,11 @@ the remake's own tips (the official tutorial chapter keeps the name 调度手册
 nothing. [ASSUMED], with no screenshot or video of the event screen offline: the card frame and colours, the two-row
 flow, the bottom bar, the 快速配置 columns, the 转场 timings, and ONE combined 甄选干员 card per tier where the official
 data lists two DIY slots (`charChessDiySlotIdList`). Both views read and write the same loadout store, so the room and
-the server see nothing new.
+the server see nothing new. Normal / elite level indicators read each form's `status.phase` and `status.level`:
+`PromotionIcon` uses the official `elite/elite_0..2` sprites (missing art: `E0` / `E1` / `E2`), never a fixed two-bar
+glyph or a phase inferred from shop tier. The tier badge reserves the full square image height above these indicators,
+including at every text size and UI scale. Settlement uses the same icon and the resolved chess / stand-in / DIY
+record's status; absent records have no phase icon and show `—` for level (§35.18 card-icon review).
 
 Automatic combat screen wake lock restores the official mobile client's screen-awake experience. App requests it
 for players and spectators when `isCombatPhase(phase)` holds for a valid ongoing match; an ended/absent room or an
@@ -670,6 +689,17 @@ simplified board uses the same mark with a fixed slot. The title footer links th
 
 ### Official versions (DESIGN §35.23, M1)
 
+Presentation assets cover the union of the installed official builds by operator/enemy/icon identity, including
+backups and summons; chess ids reused by another season never replace an operator's art. The shared manifest
+contains each version's base/E2 pictures, skill and strategy icons and models; optional local models/effects use
+the same local manifests and package pipeline. Adding earlier-version art preserves existing default-version
+entries. Full illustrations/outfits remain cosmetic-plugin layers for all versions (§35.109, ASSETS.md "Id scope").
+
+Version-dependent caches must follow the active data objects or resolved asset URLs (§36.3). Item plates in the
+preparation area and scouted hands cache by icon URL, image readiness and frame colour, never by reused item id.
+A removed icon returns to its placeholder; obsolete asynchronous loads cannot replace the current icon.
+The renderer's composed stand-in / DIY lookups validate their chess and backups sources on reuse.
+
 The page shows one official version's data at a time (`public/js/versions.js`): in the lobby this browser's choice
 (`sp.pref.lobby.version`, a registry id of `shared/versions.js`) when welcome lists it, else the server's default
 (welcome.versions' `default`), else 第二期下半 (`DEFAULT_VERSION`, a code constant); in a room the room's version
@@ -679,7 +709,12 @@ left open — also on a reloaded page that never saw the room) keeps the version
 it under that version; 统计数据's replay of a stored match shows its version while it is open (the store's
 `replayVersion`, set when the row opens — in a room it equals the room's — and cleared when the replay or 统计数据 closes;
 the lobby preference is never changed). Without
-welcome.versions (a default server, G4) the switch does not exist and nothing below runs.
+welcome.versions (a server that offers only 第二期下半) the switch does not exist and nothing below runs. A default server lists every version (G4, §35.23.11).
+
+The lobby switch keeps the full season and part visible as 文字大小 grows: its width follows its label rather than a
+fixed rem cap, and the top bar reserves that width beside its tools ([ASSUMED] presentation policy, §35.23.12). The hub
+checks include all five languages, all four text sizes, and 界面大小 75 % at 小, with the switch inside the bar and its
+hit target clear of the other controls.
 
 **Data.** `content.js installContentSet` follows the version shown: 第二期下半 → the server's own files
 (`data.setContent(null)`); another version → `loadVersionSet(cs, id)`: the version's `/cs/<cs16>/index.json` (it must
@@ -723,7 +758,10 @@ status line; `modded` stays the 非官方 mark. A version room's words: 版本�
 [ASSUMED placement]. A timed solo (第一期) shows ⚙ 模拟设置 with the 「不限时」 switch (the host toggles `room.setSoloUnlimited`; everybody else reads
 it). The solo briefing states the 300 s / 150 s rule, or the untimed line when the switch is on or the version's solo is
 not timed; while that version's data is not on screen the briefing omits the time line and the gear stays hidden. The
-version pill beside the difficulty and ⚙'s 版本 row open the picker in room mode: the host's pick
+version pill beside the difficulty and ⚙'s 版本 row open the picker in room mode. The compact pill may abbreviate its
+visible name with an ellipsis (the existing `versions-fit` policy, now covered on default servers too, §35.23.12);
+its accessible name and the picker's version names stay complete, and its control stays inside the footer and reachable.
+The host's pick
 sends `room.proposeVersion` (a RATE right after a switch — every page resends its settings, which share the server's
 heavy-message budget — is tried once more after 1.2 s [ASSUMED]); off during a vote, with gameplay plugins (「请先关闭改变
 玩法的插件」) and offline; read-only for everybody else. `ui/versionVote.js` (modelled on `ui/setupReroll.js`): the
@@ -782,7 +820,7 @@ stay the chess ids of the room's data.
 carry the VersionTag. Re-viewing another version's settlement needs that version's data: outside a room the row offers
 「切换到「X」查看」 (the page shows that version while the replay is open, `replayVersion`; the settlement opens once its data
 is checked), in a room it is disabled with a hint, and a version this server does not offer (not in welcome.versions —
-a default server offers none) is not clickable (「这台服务器没有提供「X」，不能回看该局结算」). The replay's wait always keeps
+a server narrowed to 第二期下半 offers none) is not clickable (「这台服务器没有提供「X」，不能回看该局结算」). The replay's wait always keeps
 返回统计: with 版本数据校验失败 + 重试 when the set failed, with the room's line when the room now plays another version.
 Opening a row sets `replayVersion` in a room too (the room's version comes first, so nothing changes while seated): a
 room left while the replay is open (a kick, the room closed) never moves the page to the lobby's version, so the
@@ -1000,6 +1038,15 @@ the hidden five-star orbit is unchanged (PR #576).
 
 The active-bond strip shows every entry in a horizontal scroller, with keyboard focus, touch panning and translated
 arrow controls. Watched owners, harmony counts, morph members and disabled bonds retain their existing behavior (PR #678).
+The strip's .08rem clip padding has matching negative margins to preserve the discs' and names' original height.
+Prep and Final Assault prep reserve the arrows' 44 px floor and any taller measured bounds (including native scrollbars),
+relative to the field host and safe-area insets. The minimum band remains while collapsed; desktop keeps the official
+camera and original 2.16rem band when the strip already fits (§35.110).
+
+Outside presses dismiss match detail cards, bond popups and the selected-piece underframe (PR #792, §35.93).
+The detail card and bond popup retain selection while used, so pointerdown cannot move a card before its click.
+Other HUD controls, including Settings, still dismiss them; after closing Settings the player selects a unit again.
+Field presses retain the existing origin rule: field-unit cards close, while shop/reward/bond-member cards stay (§35.110).
 
 Attack pacing (PR #729): UnitInfo carries the actual attack interval in game seconds. A `rate` event after the ally
 phase and before projectiles carries changes; its baseline is seeded by birth info. The renderer looks ahead through

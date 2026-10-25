@@ -15,6 +15,8 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { VERSIONS } from '../../shared/versions.js';
+import { textProblems } from '../e2e/text-fit.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const OUT = path.join(ROOT, 'test/e2e/out');
@@ -30,7 +32,7 @@ describe('干员调配 卡片视图 (real server, headless Chrome)', { skip: !EN
   before(async () => {
     const { startServer } = await import('../../server/index.js');
     const puppeteer = (await import('puppeteer-core')).default;
-    srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true });
+    srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true, versions: { enabled: 'all' } });
     base = `http://127.0.0.1:${srv.port}`;
     browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ['--no-sandbox'] });
     mkdirSync(OUT, { recursive: true });
@@ -63,6 +65,79 @@ describe('干员调配 卡片视图 (real server, headless Chrome)', { skip: !EN
     await page.waitForSelector('.lo .lo-card, .lo .lo-op', { visible: true, timeout: 15000 });
   };
   const escape = async (page) => { await page.keyboard.press('Escape'); await new Promise((r) => setTimeout(r, 120)); };
+
+  for (const touch of [false, true]) for (const version of VERSIONS) {
+    test(`#811: ${version.label} ${touch ? 'phones' : 'desktop'} — promotion icons, five languages, text sizes and UI scales`, { timeout: 180000 }, async () => {
+      let checked = 0;
+      const { ctx, page, problems } = await open(touch ? { w: 844, h: 390, touch } : {});
+      try {
+        if (await page.$eval('[data-testid="version-switch"]', (e) => e.dataset.version) !== version.id) {
+          await clickSel(page, '[data-testid="version-switch"]');
+          await page.waitForFunction(() => !document.getAnimations().some((a) => /^tr-/.test(String(a.animationName)) && a.playState === 'running'));
+          await clickSel(page, `.verpick__pick[data-version="${version.id}"]`);
+        }
+        await page.waitForFunction((id) => (globalThis.__SP__.data.get('config')?.version?.id ?? 'act2autochess') === id
+          && !document.querySelector('[data-testid="version-picker"]'), { timeout: 30000 }, version.id);
+        await openOverlay(page);
+        if (!await page.$('.lo-deck')) await clickSel(page, '[data-testid="loadout-view-deck"]');
+        await page.waitForSelector('.lo-op__phase', { visible: true });
+        await page.waitForFunction(() => !document.querySelector('.lo').getAnimations({ subtree: true })
+          .some((a) => a.playState === 'running' && a.effect?.getTiming().iterations !== Infinity));
+        const glyphs = await page.evaluate(() => {
+          const out = [];
+          for (const el of document.querySelectorAll('.lo-op[data-chess]')) {
+            const c = globalThis.__SP__.data.lookup('chess', el.dataset.chess);
+            const forms = [c, globalThis.__SP__.data.lookup('chess', c.goldenId)].filter(Boolean);
+            const rows = [...el.querySelectorAll('.lo-op__lvrow')];
+            forms.forEach((rec, i) => {
+              const row = rows[i], icon = row?.querySelector('.lo-op__phase');
+              if (!icon || !(icon.getAttribute('src')?.endsWith(`/elite_${rec.status.phase}.png`) || icon.textContent === `E${rec.status.phase}`)
+                || row.querySelector('b')?.textContent !== String(rec.status.level)) out.push(rec.chessId);
+            });
+          }
+          return out;
+        });
+        assert.deepEqual(glyphs, [], `${version.id}: the glyph and level match every normal / elite record`);
+        for (const lang of ['zh', 'en', 'ja', 'ko', 'zh-TW']) {
+          await page.evaluate(async (l) => (await import('/js/ui/lang.js')).switchLang(l), lang);
+          for (const ts of ['sm', 'md', 'lg', 'xl']) {
+            // 界面大小 is enabled only at 小; also test a stored 75 % with each larger text size.
+            for (const ui of ts === 'sm' ? [75, 80, 85, 90, 95, 100] : [75, 100]) {
+              await page.evaluate(async (ts, ui) => {
+                (await import('/js/ui/settings.js')).updateSettings({ textSize: ts });
+                (await import('/js/ui/screenFit.js')).updateFit({ ui });
+              }, ts, ui);
+              for (const [w, h] of touch ? [[640, 360], [844, 390], [390, 844]] : [[1920, 1080], [1600, 900], [960, 540]]) {
+                await page.setViewport({ width: w, height: h, isMobile: touch, hasTouch: touch, deviceScaleFactor: 1 });
+                await page.evaluate(async () => { await document.fonts.ready; await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))); });
+                const label = `${version.id} ${lang} ${ts} ${ui}% ${w}×${h}`;
+                const geometry = await page.evaluate(() => {
+                  const out = [];
+                  for (const card of document.querySelectorAll('.lo-op[data-chess]')) {
+                    const rail = card.querySelector('.lo-op__rail'), tier = rail.querySelector('.lo-op__tier');
+                    const badge = tier.getBoundingClientRect(), img = tier.querySelector('img')?.getBoundingClientRect();
+                    const lv = rail.querySelector('.lo-op__lv').getBoundingClientRect(), cr = card.getBoundingClientRect();
+                    const rows = [...rail.querySelectorAll('.lo-op__lvrow')].map((e) => e.getBoundingClientRect());
+                    if (Math.max(badge.bottom, img?.bottom ?? 0) > lv.top - 1) out.push(`${card.dataset.chess}: badge overlaps levels`);
+                    if (rows.some((r) => r.left < lv.left - 1 || r.right > lv.right + 1 || r.top < lv.top || r.bottom > lv.bottom)
+                      || rows.some((r, i) => i && rows[i - 1].bottom > r.top)) out.push(`${card.dataset.chess}: level rows overlap / escape`);
+                    if (lv.bottom > cr.bottom + 1) out.push(`${card.dataset.chess}: levels escape card`);
+                  }
+                  return out;
+                });
+                assert.deepEqual(geometry, [], label);
+                // The first card in each row of every tier covers all phase / level labels; geometry above checks every card.
+                assert.deepEqual(await page.evaluate(textProblems, '.lo-tgrid > .lo-op:nth-child(-n+2) .lo-op__rail'), [], label);
+                checked++;
+              }
+            }
+          }
+        }
+        assert.deepEqual(problems, []);
+      } finally { await ctx.close(); }
+      assert.equal(checked, 180);
+    });
+  }
 
   test('desktop: list by default → cards (kept), drawer, 快速配置, Esc layers, tier jump, back to the list', async () => {
     const { ctx, page, problems } = await open();

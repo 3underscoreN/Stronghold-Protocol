@@ -85,13 +85,13 @@ describe('detail card vs a press on the field', () => {
 });
 
 describe('underframe vs other game-screen interactions', () => {
-  test('a pointer press outside the field and underframe clears the selected piece', () => {
+  test('a pointer press outside the field, underframe and its detail/popups clears the selected piece', () => {
     const src = readFileSync(new URL('../../public/js/screens/game.js', import.meta.url), 'utf8');
     const start = src.indexOf('// The underframe belongs to the selected field piece.');
     const end = src.indexOf("screen.addEventListener('pointerdown', onDown, true)", start);
     const h = src.slice(start, end);
     assert.ok(h.length > 0);
-    assert.match(h, /if \(!live\.current\.sel \|\| e\.target\?\.closest\?\.\('\.uframe, \.gm__field'\)\) return;\s+setSel\(null\)/);
+    assert.match(h, /if \(!live\.current\.sel \|\| e\.target\?\.closest\?\.\('\.uframe, \.gm__field, \.dpanel, \.bpop'\)\) return;\s+setSel\(null\)/);
     assert.ok(end > start, 'the listener is attached to the full game screen');
     assert.match(src.slice(end, end + 100), /screen\.addEventListener\('pointerdown', onDown, true\)/);
   });

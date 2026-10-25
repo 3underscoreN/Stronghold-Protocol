@@ -327,19 +327,60 @@ remain local; no official scene bytes belong in git or fixtures.
 
 ### Id scope
 
-- **Operators:** all 138 pool charIds from `activity_table` (`charShopChessDatas[*].charId ∪ backupCharId`), including hidden chess and backup operators; plus every unit of `data/backups.json` research 07 does not list — the 72 自选 owned-6★ picks (`diy.ownedPool`, DATA.md §18; the collab operators are not in the data, and 焰狐龙梓兰's entries left the manifest when she left the pool in 0.2.0) — planned from 07's URL patterns (`tools/assets/plan.mjs patternOperator`, `tools/fetch-assets.mjs dataExtras`): avatar and portrait (E0–E1 and E2), the default-skin battle Spine Front / Back, the icon and skill sound of each skill, the sub-profession icon. 209 operators in all (206 with a Back model).
-- **Tokens:** the 20 pool tokens, and the 38 summons of the 自选 picks (`data/backups.json tokens`) as extra tokens (below): their avatars; no dump carries the battle Spine of the 自选 summons (upstream has at most skin variants, which the default locations miss), so the web manifest has no model for them — 35 of them, and 4 pool summons, have the official model as an optional local-client overlay ("Token models from the local client"); 3 have no model in the game at all.
-- **Enemies:** 253 ids planned, 252 in the manifest (心烛 has no assets). The set is the union of:
+Since 0.3.2, `tools/assets/versions.mjs` reads every installed official build in `shared/versions.js` and plans their
+union by charId / enemyKey / iconId. A chess id is not an art identity: the same id can name different operators in
+different seasons. Backups, DIY forms, summons, all skill icons, modules, items, bands and bonds participate too.
+The required avatar / portrait / Front check covers the whole union. `--add-only` preserves existing manifest values
+as well as files; only new entries, the content hash and statistics change. This keeps today's presentation stable
+when filling an earlier season's gaps (history §35.109).
+
+Renderer composites follow the same identity rule (§36.3): `ItemView` passes the resolved icon URL to
+`itemTexture`, whose cache also includes image readiness and frame colour. Never use an item chess id for that
+page-lifetime cache: `chess_item_2_07_e_a` names 迅捷作战粮 in 第一期下半 and 见钱眼开玩偶 in 第二期下半.
+Equipped-item pips already use icon URLs; operator/enemy/summon diamonds include their picture URLs. Renderer
+stand-in and DIY record caches validate their source chess/backups objects before reusing a composition.
+
+To fill gaps from an installed official client without downloading art:
+
+```bash
+python tools/local-extract/extract.py --only versions --game <client-or-bundle-root>
+python tools/local-extract/extract.py --only fx --fx-set used --fx-add-only --game <client-or-bundle-root>
+node tools/fetch-assets.mjs --offline --add-only --local-spines
+node tools/assets/coverage.mjs --files --fx
+```
+
+`--only versions` stages missing portraits/avatars, default Front/Back models, enemy models and icons, skill/module
+icons and strategy/item/bond icons; it copies only absent files into the shared asset tree. A full local extraction
+also runs this job. The six earlier-only enemy models are part of the regular local enemy extraction and freshness
+contract. FX discovery reads every version's roster. `--fx-add-only` crawls units absent from the existing index,
+adds their missing effect prefabs and keeps the existing units/skills/projectiles/prefabs; it never prunes the set.
+It can retain legacy projectile records beside current records (`rolesVersion: 1` marks newly extracted projectile
+role metadata); the runtime continues to read legacy behaviours. When working in a shared asset tree, stage the FX
+output with copies of the existing `fx/index.json`, `fx/textures.json` and `data/local-fx.json`, then publish absent
+files and the merged indexes. The full package and asset pack read the resulting three manifests normally.
+The official `character_table.skills[].overridePrefabKey` is recorded as a unit-local skill alias, so 万顷's shared
+S1 skill id selects `skchr_wanqin_1` without replacing that shared skill for another operator.
+
+`node tools/assets/coverage.mjs` checks declarations without requiring official files, suitable for CI.
+`--files --fx` additionally checks local files and the extracted effect index. `--json=<file>` and
+`--markdown=<file>` write the full per-record inventory. Documented current-version fallbacks (effect-only summons,
+one-facing models, the `enemy_9016_acstmr` icon and escaped-stage shared boards) are explicitly labelled, not counted
+as newly missing assets. Full illustrations and alternate outfits remain optional cosmetic-plugin art for every
+version; base/E2 avatars and half-body portraits are mandatory where the data selects them.
+
+- **Operators:** the pool, hidden chess, backups and DIY picks of all installed official versions, keyed by charId (`tools/assets/versions.mjs`). The current union has 229 operators (210 in today’s data and 19 earlier-only), all with Front models and 225 with Back models. Three bards and 安洁莉娜 use one facing. The plan supplies base/E2 avatars and half-body portraits, default battle Spine, every skill icon and skill sound, and sub-profession icons. Extra identities use the established `patternOperator` URL patterns.
+- **Tokens:** the union of each version’s `tokens.json` and backup/DIY summons. The manifest has 58 `token_*` entries; char/enemy-backed summons resolve through those identity tables. Pictures and available default models come from the normal plan, supplemented by the official local-client overlay ("Token models from the local client"). Five effect/marker tokens have no separate Spine and keep that documented presentation.
+- **Enemies:** 258 manifest identities: the existing 252 plus six earlier-only enemies. 心烛 remains without an entry. The set is the union of:
   - the 07 enemy list;
   - every enemy in the `act1autochess_*` wave, boss and 联防 levels that act2 modes use (from `05-maps.json`; the tutorial is excluded);
   - the bosses (`boss_1..10`);
   - the closure of their summons (`randomEnemyAttribute` spawns and blackboard `enemy_key` references);
-  - every key of `data/enemies.json` (built by `tools/build-data.mjs`, when present), which adds for example the enemies swapped in by 机变 effects;
+  - every key of the installed versions’ `enemies.json` (built by `tools/build-data.mjs`, when present), which adds for example the enemies swapped in by 机变 effects;
   - the bosses' handbook/model ids, such as `enemy_1559_vtlionk`;
   - enemy units spawned by operator kits (research 03 skills/talents). For example, 隐德来希's default S3 summons 心烛 `enemy_5601_entlec` through the talent key `take_extra_enemy_key`. 心烛 has no icon and no Spine in any dump, so it has no manifest entry: it is reported as a miss, and the client must draw a glyph.
-- **Extra tokens:** any `token_*` key of `data/tokens.json` that research does not list gets the default avatar and Spine locations.
+- **Extra tokens:** any `token_*` key of an installed version’s `tokens.json` that research does not list gets the default avatar and Spine locations.
   - The non-token summons in that file (`enemy_9012_acloon` 炎佑, `char_605_cmedic`, `char_613_acmedc`) are found under `enemies` and `chars`.
-- **Skill icons:** every skill index of every planned operator (the default one first; DESIGN §16 loadouts, the 自选 picks' three skills): 522 icons.
+- **Skill icons:** every skill index of every planned operator (the default one first; DESIGN §16 loadouts, the 自选 picks' three skills): 557 icons across the four versions.
 - **UI:**
   - every group from `07-assets.json → autochessUi`: rarity, elite and chess-level sprites, the shop panel and cards, HUD, bond board, equip slot, round dialog, band choose, settlement, prepare backdrop;
   - `arts` (rarity stars, elite icons, the camp logos of pool nations, the loading illustrations used by the act2 modes, battle common sprites, act2 entry backdrops and season logo, item rarity frames);

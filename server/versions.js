@@ -185,7 +185,7 @@ export function createVersionSets({ enabled, defaultId = DEFAULT_VERSION, dataDi
       return DIFFICULTIES.filter((d) => modes.has(modeIdFor(roomMode, d)));
     },
     /**
-     * welcome.versions, or null when the server offers act2autochess alone (a default server's welcome is unchanged). A
+     * welcome.versions, or null when the server offers act2autochess alone (that welcome carries no `versions`). A
      * version whose data failed to load is left out (no page could load it; known once a room or its manifest tried);
      * when that is the configured default, 第二期下半 (if enabled, else the first one left) is marked the default
      * instead, as the lobby's defaultVersion picks it.

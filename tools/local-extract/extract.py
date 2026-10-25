@@ -75,6 +75,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import scenes  # noqa: E402  (the battlefield scene table and exporter; imports UnityPy only when it runs)
 import fx  # noqa: E402  (the official battle effects, DESIGN §33; imports UnityPy only when it runs)
 import operators  # noqa: E402 (installed plugin operators' optional official art, §34.28)
+import versions  # noqa: E402 (the official-version roster's missing presentation art)
 
 ROOT = Path(__file__).resolve().parents[2]
 HOME = Path.home()
@@ -272,7 +273,8 @@ JOBS = [
     ('arts/maps/effect.ab', 'map/water', {'Texture2D'}, r'water_normal|Caustics|WaterNoise|noise_clouds|Water_Foam|SmoothWaves'),
 ]
 
-# Enemy battle Spine models that no community dump carries (isHarryh/Ark-Models lists them with an empty assetList, so
+# Local enemy battle Spine models: six earlier-season enemies, plus two no community dump carries
+# (isHarryh/Ark-Models lists them with an empty assetList, so
 # tools/fetch-assets.mjs aliases them to another enemy's skeleton — the web model): every enemy of data/enemies.json whose
 # official battle prefab draws a skeleton of its own that is missing upstream (audited against the client's prefabs, user
 # feedback after 0.1.0 report D3: 灼热源石虫 / 炽焰源石虫 — the ELEMENT faction's slugs — were drawn as the plain 源石虫).
@@ -281,7 +283,8 @@ JOBS = [
 # _AlphaTex merged in as A). Output: spine/enemy/<id>/ (manifest group spine/enemy/<id>); the client draws the model
 # when the group lists every file of data/assets.json enemies[id].spineLocal (whose metadata
 # tools/assets/local-enemy-spines.json keeps: `node tools/fetch-assets.mjs --local-spines` after a game update).
-ENEMY_SPINES = ['enemy_1305_mhslim', 'enemy_1305_mhslim_2']
+ENEMY_SPINES = ['enemy_1201_sfzhi', 'enemy_1249_lysdb', 'enemy_1254_lypa', 'enemy_1275_dwlock',
+                'enemy_1305_mhslim', 'enemy_1305_mhslim_2', 'enemy_1373_ltnhor_2', 'enemy_1376_ltndru']
 ENEMY_ART = 'refs/arts/enm_art_*.ab'
 ENEMY_SPINE_SUB = 'spine/enemy'
 
@@ -1079,6 +1082,8 @@ def main():
     ap.add_argument('--fx-keys', default='', metavar='K1,K2',
                     help='with --only fx: export only these effect prefabs (comma-separated keys)')
     ap.add_argument('--fx-jobs', type=int, default=0, metavar='N', help='with --only fx: worker processes (default up to 8)')
+    ap.add_argument('--fx-add-only', action='store_true',
+                    help='extract only units/prefabs missing from the current fx index; preserve the existing set')
     ap.add_argument('--fx-texture-format', choices=('webp', 'png'), default='webp',
                     help='with --only fx: WebP quality 90 textures (default) or lossless PNG')
     ap.add_argument('--webp', action='store_true',
@@ -1125,13 +1130,16 @@ def main():
     # §34.28: a normal full run is not consent for optional plugin art. --only plugin-art is explicit too.
     art_on = wants_sub(args.only, operators.SUB) and (bool(args.only) or args.plugin_art)
     art_ids = spine_ids(args.only, operators.SUB, operators.references(Path(args.plugin_root))) if art_on else []
-    if not jobs and not enemy_ids and not token_ids and not stage_ids and not fx_on and not art_on:
+    versions_on = not args.only or 'versions' in args.only
+    if not jobs and not enemy_ids and not token_ids and not stage_ids and not fx_on and not art_on and not versions_on:
         print(f'--only {args.only}: no job matches', file=sys.stderr)
         return 2
     out_root = Path(args.out)
     out_root.mkdir(parents=True, exist_ok=True)
     manifest, total = {}, 0
     chars = {}
+    if versions_on:
+        total += versions.export(ab_root, out_root, manifest, print, ROOT)
     if art_ids:
         chars, n = operators.export(ab_root, out_root, manifest, print, art_ids)
         total += n
@@ -1146,7 +1154,8 @@ def main():
         keys = [k.strip().lower() for k in args.fx_keys.split(',') if k.strip()]
         total += fx.export_fx(ab_root, out_root, manifest, print, selection=args.fx_set, keys=keys or None,
                               jobs=args.fx_jobs or None, root=ROOT,
-                              fx_manifest=Path(args.manifest).with_name(fx.FX_MANIFEST), texture_format=args.fx_texture_format)
+                              fx_manifest=Path(args.manifest).with_name(fx.FX_MANIFEST), texture_format=args.fx_texture_format,
+                              add_only=args.fx_add_only)
     if stage_ids:
         total += export_scenes(ab_root, out_root, manifest, print, stage_ids, scene_roots(ab_root, args.scenes))
     old, old_chars = {}, {}

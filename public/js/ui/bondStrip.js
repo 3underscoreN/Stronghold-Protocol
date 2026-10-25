@@ -55,13 +55,26 @@ function BondScroller({ count, children }) {
   useEffect(() => {
     const el = viewport.current;
     if (!el) return;
-    const update = () => setEdges({ left: el.scrollLeft > 1, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1 });
-    const observer = new ResizeObserver(update);
+    const update = () => {
+      const left = el.scrollLeft > 1, right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+      setEdges((old) => old.left === left && old.right === right ? old : { left, right });
+    };
+    // A render can resize the observed slots too. Update after observer delivery, so those changes are measured in the
+    // next frame rather than producing "ResizeObserver loop completed with undelivered notifications" during prep.
+    let frame = null;
+    const observer = new ResizeObserver(() => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => { frame = null; update(); });
+    });
     observer.observe(el);
     for (const child of el.children) observer.observe(child);
     el.addEventListener('scroll', update, { passive: true });
     update();
-    return () => { observer.disconnect(); el.removeEventListener('scroll', update); };
+    return () => {
+      observer.disconnect();
+      if (frame !== null) cancelAnimationFrame(frame);
+      el.removeEventListener('scroll', update);
+    };
   }, [viewport, count]);
   const scroll = direction => viewport.current?.scrollBy({ left: direction * Math.max(80, viewport.current.clientWidth * .75), behavior: 'smooth' });
   return html`<div class="bstrip-scroll">

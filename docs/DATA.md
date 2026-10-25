@@ -39,6 +39,11 @@ Unknown options or a missing option value are errors (exit code 2); `--refresh` 
 
 ## 0. Conventions used by every file
 
+Promotion indicators read the resolved record's `status.phase` and `status.level` (chess or a backup form), not
+`isGolden` or tier. `status.phase` is the numeric suffix of official `status.evolvePhase`; the UI uses the matching
+`assets.ui[elite/elite_<phase>]`. The four shipped versions agree: tiers I/II normal E1 Lv.55/60, elite E2 Lv.50/55;
+tiers III–VI normal E2 Lv.1, elite E2 Lv.60. This is a data observation, not a substitute UI lookup (§35.18).
+
 | Convention | Meaning |
 |---|---|
 | ids | Always the official ids: `chess_char_1_01_a` (normal) / `_b` (精锐 golden), `chess_item_1_01_e_a`, `garrison_16_a`, `bondeffect_yan`, `enemy_1422_lrsldr`, `band_bldsk`, `boss_1`, `act1autochess_03` (wave template = level file name, lower-case), `act2autochess_m01` (stage). |
@@ -79,7 +84,7 @@ Top level: `{ season, seasonName, modes, economy, lpCapPerRound, bossOvertimeAft
 | `bossHpScale` | `{"bloodPointKey":"bloodPointAbyss","unaffectedByEnemyScale":true}` | which `bloodPoint` column the mode reads; the pool rule's keys live in the global `bossHpScale` below — one set here would override it for this mode (`gamedata.js bossPoolShareOf`) |
 | `upgradePrices` | `[5,8,11,12,13]` | base price L1→2 … L5→6 (−1 per round start, floor 0, reset after upgrade) |
 | `maxShopLevel` | `6` | |
-| `shopSlots[level]` | `{"1":{"chess":3,"item":1},…}` | operator + item slots per shop level |
+| `shopSlots[level]` | `{"1":{"chess":3,"item":1},…}` | operator + item slots per shop level, from the selected snapshot's `activity.AUTOCHESS_SEASON[season].shopLevelDataDict[modeId][level].charChessCount` / `itemCount`; 第一期: equipment at 5–6, 第二期: 1–6 (lobby modes; §36.1) |
 | `levelTagColors[level]` | `"#434343"` | UI |
 | `stages` | `["act1autochess_m02",…]` | active stages allowed (pick by `stages[id].weight`, 50 each): 标准 FUNNY (and training) = `act1autochess_m01` 战场#01 only; 险境 NORMAL = the 8 active stages; 绝境 HARD / 终极 ABYSS = 7 (no 战场#01) — official mode data |
 | `bossWeights` / `hiddenBossWeights` | `{"boss_1":6,…}` / `{"boss_8":50,…}` | weighted boss picks |
@@ -774,13 +779,18 @@ See PLUGINS.md for namespaces, limits and the local-table version recorded by Fo
 
 ## Official versions (M0)
 
+Presentation is shared across the official builds: `tools/assets/versions.mjs` reads their rosters by charId,
+enemyKey and iconId, including backups/DIY, rather than merging reused chess ids. `fetch-assets` plans the union;
+`local-extract` fills missing official art and effects. See [ASSETS.md](ASSETS.md#id-scope) and §35.109. Gameplay
+data and the default version's existing presentation entries remain unchanged by this asset expansion.
+
 The data side of the official version switch (0.3.2, DESIGN §35.22): besides today's game, 第二期下半, the build produces
 the three earlier versions, named by period as the maintainer named them (2026-10-22): 第一期 is the official
 `act1autochess` (「卫戍协议：盟约」 上半期活动), 第二期 `act2autochess` (下半期活动), and each period's 上半 / 下半 are its
 sub-versions V1_1 / V1_2 and V2_1 / V2_2. (PRTS's 「第一期」 is the 2024 卫戍协议, `act1vautochess`, which is not done.)
 A bare 上半 / 下半 here and in code comments keeps the official activity sense (上半 = 第一期 / `act1autochess`, 下半 =
 第二期 / `act2autochess`); a period's halves are always written with the period (第一期上半 …) or as V1_1 … V2_2.
-**M2 core and kits are in** (DESIGN §35.22.7–§35.22.9): golden and botbench load a selected version, and a version room plays that version's rules and kits. **M1 serves enabled versions** (DESIGN §35.23; "Serving the versions (M1)" below): `server/http/static.js` serves `data/versions/<slug>/` only when the server enables that version, and a default server still answers 404. `data/versions/` is tracked, so the release zips and Docker carry it (48 files, 15.0 MB on disk, about 1.3 MB zipped). The default version is unchanged — `data/*.json`, `data/i18n/`, the golden corpus, the `cs` formula and a default room's `room.state` are pinned: `test/data.test.js` and `test/golden.test.js` guard the data and the goldens, `test/versions-default-guard.test.js` (G2–G4) the `cs` inputs, the formula and the default room. Its file hashes (G1) were the M0 merge check and were deleted when M1 started (DESIGN §35.22.2, §35.23).
+**M2 core and kits are in** (DESIGN §35.22.7–§35.22.9): golden and botbench load a selected version, and a version room plays that version's rules and kits. **M1 serves enabled versions** (DESIGN §35.23; "Serving the versions (M1)" below): `server/http/static.js` serves `data/versions/<slug>/` only when the server enables that version. Nothing set enables all four, so those files are served (§35.23.11); a version the server does not enable, and a server narrowed to 第二期下半 alone, still answer 404. `data/versions/` is tracked, so the release zips and Docker carry it (48 files, 15.0 MB on disk, about 1.3 MB zipped). The default version is unchanged — `data/*.json`, `data/i18n/`, the golden corpus, the `cs` formula and a default room's `room.state` are pinned: `test/data.test.js` and `test/golden.test.js` guard the data and the goldens, `test/versions-default-guard.test.js` (G2–G4) the `cs` inputs, the formula, the default room and the welcome's versions list. Its file hashes (G1) were the M0 merge check and were deleted when M1 started (DESIGN §35.22.2, §35.23).
 
 **M2 research and rules:** `docs/research/versions/<slug>/02-bonds.json` and `04-items.json` use each snapshot's own
 text. First-season `01-core-data.json` supplies the 11-18 blackboard multipliers and preserves 300-second solo prep;
@@ -906,8 +916,12 @@ every file system and URL).
   (`garrison_39`: 「斯卡蒂、幽灵鲨或安哲拉」; 下半: 深巡); V2_1 and the default have none.
 - **`config`**: `hiddenCore` single / multi (下半 350 / 1200, V2_1 too; 上半 300 / 1000, PRTS 卫戍协议：盟约); `rules` — V2_1:
   `{}`, the default's (every 下半 switch dates from 2026-03-14); 上半:
-  `deployOrder 'rowBottomUp'`, `soloTimed true`, `benchEquip false`, `benchFullSwap false`, `bossMirrorShare false`
-  (PRTS 卫戍协议/帮助; news 5114 lists the last three as 下半 additions). M2 reads `rules` (§35.22.7): a first-season
+  `deployOrder 'rowBottomUp'`, `soloTimed true`, `benchEquip false`, `bossMirrorShare false`
+  (PRTS 卫戍协议/帮助; news 5114 describes the later equipment / boss changes). The former `benchFullSwap false`
+  restriction is removed as an **INTENTIONAL DEVIATION (有意偏差)**: after reviewing
+  [official news 5114](https://ak.hypergryph.com/news/5114), the maintainer decided on 2026-10-25 to allow the swap
+  in 第一期上／下半 too. The official first period did not allow it; the second period added it. This convenience
+  applies to all four versions ([§36.2](history/0.3.3.md)). M2 reads `rules` (§35.22.7): a first-season
   solo is timed unless the room opts into `soloUnlimited` (§35.23.10).
   `constants.singleReconnectTime` is `null` in a version whose constData lacks it: 上半's has none (the 2026-03-10
   rewrite `12e0a020` added it), so the build writes no 下半 value as official data. The lobby's own fallback then keeps a
@@ -1014,10 +1028,12 @@ versions"), and their matches run in a match host whose data singleton is that v
 
 **Configuration** (`server/http/config.js` versionsFrom): the startServer option `versions: { enabled, default, maxHosts }`
 wins over the environment — `SP_VERSIONS` (`all` or a comma list of registry ids), `SP_VERSION_DEFAULT`,
-`SP_MAX_VERSION_HOSTS`. Nothing set: `act2autochess` alone (the switch off: every room, page and welcome as before M1). An
-unknown id is warned about and dropped (none left: `act2autochess`); a default that is not enabled is warned about and
-replaced by the first enabled id in registry order; `maxHosts` defaults to the number of enabled non-default versions (at
-least 1 when there is one). The boot log prints one line, e.g.
+`SP_MAX_VERSION_HOSTS`. Nothing set enables every registry id (the lobby switch on; the default version stays
+`act2autochess`, §35.23.11). `SP_VERSIONS=act2autochess`, or `versions.enabled` of that one id, is 第二期下半 alone (the
+switch off). An unknown id is warned about and dropped (none left: `act2autochess`); a default that is not enabled is
+warned about and replaced by the first enabled id in registry order; `maxHosts` defaults to the number of enabled
+non-default versions (at least 1 when there is one). Version match hosts are forked on the first match of a version,
+never at boot. The boot log prints one line, e.g.
 `[versions] enabled: act2autochess (第二期下半, default), act1autochess (第一期下半)`.
 
 **The service** (`server/versions.js` createVersionSets): at boot, each enabled non-default version's `cs` —

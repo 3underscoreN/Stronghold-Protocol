@@ -4,8 +4,8 @@
 //   G2  the default config.json has no `version`, and cs reads exactly the top-level gameplay files
 //   G3  the cs formula (known-answer vectors of shared/plugins/identity.js), not the vanilla cs itself, which changes with
 //       any code change (server/plugins/identity.js)
-//   G4  a fresh co-op/NORMAL room's room.state (code, ids, name and content.cs normalised) and a welcome without
-//       `versions`
+//   G4  a fresh co-op/NORMAL room's room.state (code, ids, name and content.cs normalised; no `version` key) and the
+//       welcome's `versions` list (each cs normalised: the default as <vanilla cs>, the others as <cs:id>)
 // G1 (the sha256 of every tracked default data file and of the golden corpus) was the M0 merge check; it was deleted when
 // M1 started (DESIGN §35.22.2, §35.23): test/golden.test.js and test/data.test.js guard the data and the goldens now.
 // An intended change of the default must regenerate the fixture on purpose and say why in the commit:
@@ -33,9 +33,26 @@ const HOW = 'an intended change of the default version must regenerate test/fixt
 const GAMEPLAY = ['backups', 'bands', 'bonds', 'bosses', 'chess', 'choices', 'config', 'effects', 'enemies', 'factions',
   'garrisons', 'items', 'stages', 'tokens', 'tuning', 'waves'];
 
-/** A fresh co-op/NORMAL room's room.state and the host's welcome, on the default data. */
+const VERSION_ENV = ['SP_VERSIONS', 'SP_VERSION_DEFAULT', 'SP_MAX_VERSION_HOSTS'];
+const HEX64 = /^[0-9a-f]{64}$/;
+
+/** Run `fn` with the version environment unset, then put it back. The server reads it only while starting. */
+async function withUnsetVersions(fn) {
+  const saved = VERSION_ENV.map((k) => [k, process.env[k]]);
+  for (const [k] of saved) delete process.env[k];
+  try {
+    return await fn();
+  } finally {
+    for (const [k, v] of saved) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+}
+
+/** A fresh co-op/NORMAL room's room.state and the host's welcome, on the default data, with nothing narrowing the versions. */
 async function freshRoom() {
-  const srv = await startServer({ port: 0, host: '127.0.0.1', quiet: true });
+  const srv = await withUnsetVersions(() => startServer({ port: 0, host: '127.0.0.1', quiet: true }));
   const c = await TestClient.connect(`ws://127.0.0.1:${srv.port}/ws`);
   try {
     const welcome = await c.hello('Guard');
@@ -67,6 +84,23 @@ function normaliseState(state, welcome) {
   return out;
 }
 
+/**
+ * The welcome's versions list with each cs replaced. The default version's cs must be the vanilla hash; every cs is a
+ * distinct 64-hex digest, so a sim change does not move the fixture.
+ */
+function normaliseVersions(welcome) {
+  assert.ok(Array.isArray(welcome.versions), 'welcome.versions');
+  const seen = new Set();
+  return welcome.versions.map((v) => {
+    assert.match(v.cs, HEX64, v.id);
+    assert.equal(seen.has(v.cs), false, `duplicate cs ${v.id}`);
+    seen.add(v.cs);
+    if (v.id === 'act2autochess') assert.equal(v.cs, welcome.content?.vanilla, 'the default entry cs is the vanilla cs');
+    else assert.notEqual(v.cs, welcome.content?.vanilla, v.id);
+    return { ...v, cs: v.id === 'act2autochess' ? '<vanilla cs>' : `<cs:${v.id}>` };
+  });
+}
+
 const KAT = {
   cs: contentHashOf({ app: '0.0.0-kat', sim: 'aa'.repeat(32), data: { chess: 'bb'.repeat(32), config: 'cc'.repeat(32) } }),
   sim: simHashOf({ 'shared/a.js': '1'.repeat(64), 'sim/b.js': '2'.repeat(64) }),
@@ -79,6 +113,7 @@ if (UPDATE) {
       _: `Default-version guard (test/versions-default-guard.test.js); ${HOW}.`,
       kat: { cs: KAT.cs, sim: KAT.sim, contentHashVersion: CONTENT_HASH_VERSION },
       roomState: normaliseState(state, welcome),
+      welcomeVersions: normaliseVersions(welcome),
     };
     fs.writeFileSync(FIXTURE, `${JSON.stringify(fixture, null, 2)}\n`);
   });
@@ -103,10 +138,10 @@ if (UPDATE) {
     assert.deepEqual(fixture.kat, { cs: KAT.cs, sim: KAT.sim, contentHashVersion: CONTENT_HASH_VERSION });
   });
 
-  test('G4: a fresh default room and the welcome are unchanged', async () => {
+  test('G4: a fresh default room.state and the welcome versions list stay pinned', async () => {
     const { welcome, state } = await freshRoom();
-    assert.equal(Object.hasOwn(welcome, 'versions'), false, 'welcome carries no `versions` on a default server');
     assert.equal(Object.hasOwn(state, 'version'), false, 'a default room.state carries no `version`');
     assert.deepEqual(normaliseState(state, welcome), fixture.roomState, `the default room.state changed; ${HOW}`);
+    assert.deepEqual(normaliseVersions(welcome), fixture.welcomeVersions, `the welcome versions list changed; ${HOW}`);
   });
 }

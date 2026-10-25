@@ -6,14 +6,16 @@
    (`--t`, css/theme.css), floored in px for phones.
    ========================================================================================== */
 /* the report and the codex are full-screen Modals (ui/components.js Modal: focus trap, Esc, focus restored) */
-.modal__box.sw, .modal__box.sw-codex { position: fixed; inset: 0; width: auto; max-height: none; border: 0; box-shadow: none; animation: sw-in 200ms var(--ease-out) backwards; }
+/* Content must be visible even with a paused animation timeline (§35.113). Include the Modal veil: its shared
+   opacity fade would hide all descendants. Only the decorative mist animates; data/selection updates never fade. */
+.modal.sw-veil { animation: none; }
+.modal__box.sw, .modal__box.sw-codex { position: fixed; inset: 0; width: auto; max-height: none; border: 0; box-shadow: none; animation: none; }
 .modal__box.sw::after, .modal__box.sw-codex::after, .sw > .modal__stripe, .sw-codex > .modal__stripe { display: none; }
 .sw > .modal__body, .sw-codex > .modal__body {
   position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden;
   padding: var(--sa-t, 0px) var(--sa-r, 0px) var(--sa-b, 0px) var(--sa-l, 0px); color: #f1f4f3; overscroll-behavior: contain;
 }
 .sw { --sw-ink: #161b1a; --sw-tile: #262c2b; --sw-tile-2: #1a1f1e; --sw-panel: rgba(20, 25, 24, .8); background: #9aa3a2; }
-@keyframes sw-in { from { opacity: 0; } }
 .sw__bg { position: absolute; inset: 0; pointer-events: none; overflow: hidden;
   background:
     radial-gradient(90% 70% at 72% 8%, rgba(255, 255, 255, .62), transparent 62%),
@@ -61,7 +63,7 @@
 .sw-right { min-height: 0; overflow-y: auto; padding: .2rem .12rem .1rem 0; scrollbar-width: thin; scrollbar-color: rgba(22, 27, 26, .55) transparent; }
 .sw-loading { margin: 1rem 0; text-align: center; color: var(--sw-ink); font-weight: 700; }
 /* the left column */
-.sw-detail { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: .14rem; animation: sw-in 160ms var(--ease-out) backwards; }
+.sw-detail { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: .14rem; }
 .sw-hero { flex: none; display: flex; flex-direction: column; align-items: center; gap: .08rem; }
 .sw-hero__box { position: relative; display: grid; place-items: center; width: min(3.3rem, 80%); height: max(2.1rem, 32px, calc(96px * var(--sp-ui, 1))); background: rgba(30, 36, 35, .78);
   box-shadow: 0 .06rem .2rem rgba(0, 0, 0, .3); }
@@ -204,7 +206,7 @@ button.sw-eth:hover { border-color: #fff; }
 .sw-ranks button:hover:not(:disabled):not(.is-on) { color: #eef2f1; }
 .sw-ranks button.is-on { color: #fff; background: #1d6f8f; }
 .sw-ranks button:disabled { opacity: .35; cursor: default; }
-.sw-cd { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .12rem; padding-right: .08rem; animation: sw-in 140ms var(--ease-out) backwards;
+.sw-cd { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: .12rem; padding-right: .08rem;
   scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .25) transparent; }
 .sw-cd__head { position: relative; display: flex; flex-direction: column; gap: .02rem; min-height: max(1.1rem, 32px, calc(60px * var(--sp-ui, 1))); }
 .sw-cd__cat, .sw-cd__way { font-size: max(calc(.19 * var(--t)), 12px); color: #8f9a97; }
@@ -267,7 +269,6 @@ button.sw-eth:hover { border-color: #fff; }
   .sw-sec__grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .modal__box.sw, .modal__box.sw-codex, .sw-detail, .sw-cd { animation: none; }
   .sw__mist { animation: none; }
   .sw-tile { transition: none; }
 }

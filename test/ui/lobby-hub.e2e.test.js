@@ -264,7 +264,8 @@ describe('hub lobby (real server, headless Chrome)', { skip: !ENABLED && 'set SP
         ailast: [...document.querySelectorAll('.rs-opts [role="switch"]')].map((b) => [b.textContent.trim(), b.disabled]),
       }));
       assert.ok(st.diff.includes('绝境模拟') && st.diff.includes('更改') && !st.diff.includes('由创建者选择'), st.diff);
-      assert.deepEqual(st.ailast, [['AI 队友最后选择', false]]);
+      // §35.100 adds the host's default-off spectator handover switch alongside AI 队友最后选择.
+      assert.deepEqual(st.ailast, [['允许观战者接替 AI', false], ['AI 队友最后选择', false]]);
       await page.screenshot({ path: path.join(OUT, 'lobby-hub-room-settings.png') });
       await press(page, '.rs-opts__diff');
       await page.waitForSelector('.modal__box.proto', { visible: true });
@@ -779,6 +780,17 @@ describe('hub lobby (real server, headless Chrome)', { skip: !ENABLED && 'set SP
     const lines = (e) => { const r = document.createRange(); r.selectNodeContents(e); return [...r.getClientRects()]; };
     const area = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
     const out = [];
+    // §35.23.11: the default server now shows the version switch beside the tools. Its full label must leave them
+    // pressable, including at 界面大小 75 % (小 only) and at the larger text sizes.
+    const chip = document.querySelector('[data-testid="version-switch"]');
+    if (chip) {
+      const r = R(chip), bar = R(chip.closest('.topbar'));
+      if (r.left < bar.left - 1 || r.right > bar.right + 1 || r.top < bar.top - 1 || r.bottom > bar.bottom + 1) out.push('version switch outside the top bar');
+      for (const tool of document.querySelectorAll('.topbar__left .btn, .topbar__left .ping')) {
+        if (area(r, R(tool)) > 4) out.push('version switch over a top-bar control');
+      }
+      if (!chip.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2))) out.push('version switch centre is covered');
+    } else out.push('default server missing the version switch');
     const cards = [...document.querySelectorAll('.lobby-hub .hub-entry')];
     for (const c of cards) {
       const icon = R(c.querySelector('.hub-entry__icon .icon'));
@@ -863,16 +875,18 @@ describe('hub lobby (real server, headless Chrome)', { skip: !ENABLED && 'set SP
       for (const [screens, touch] of [[phones, true], [desks, false]]) {
         const { ctx, page, problems } = await open({ w: screens[0][0], h: screens[0][1], touch, lang: lang === 'zh' ? null : lang });
         try {
-          for (const textSize of ['sm', 'md', 'lg', 'xl']) {
+          for (const [textSize, ui] of [['sm', 100], ['sm', 75], ['md', 100], ['lg', 100], ['xl', 100]]) {
             await page.evaluate(async (ts) => (await import('/js/ui/settings.js')).updateSettings({ textSize: ts }), textSize);
+            await page.evaluate(async (ui) => (await import('/js/ui/screenFit.js')).updateFit({ ui }), ui);
             for (const [w, h] of screens) {
               await page.setViewport({ width: w, height: h, hasTouch: touch, isMobile: touch, deviceScaleFactor: 1 });
               await sleep(150); await settle(page); await page.evaluate(() => document.fonts.ready);
               const plain = await page.evaluate(textProblems, '.lobby-screen');
-              for (const p of plain) bad.push(`${lang} ${textSize} ${w}×${h}: ${p}`);
-              for (const p of await tipProblems(page, new Set(plain), h)) bad.push(`${lang} ${textSize} ${w}×${h}: ${p}`);
-              for (const p of await page.evaluate(hubShapes)) bad.push(`${lang} ${textSize} ${w}×${h}: ${p}`);
-              for (const p of await forcedShapes(page)) bad.push(`${lang} ${textSize} ${w}×${h}: ${p}`);
+              const what = `${lang} ${textSize} UI ${ui}% ${w}×${h}`;
+              for (const p of plain) bad.push(`${what}: ${p}`);
+              for (const p of await tipProblems(page, new Set(plain), h)) bad.push(`${what}: ${p}`);
+              for (const p of await page.evaluate(hubShapes)) bad.push(`${what}: ${p}`);
+              for (const p of await forcedShapes(page)) bad.push(`${what}: ${p}`);
               if (lang === 'en' && textSize === 'xl' && (w === 667 || w === 800 || w === 1280)) await page.screenshot({ path: path.join(OUT, `lobby-hub-fit-${w}-en-xl.png`) });
             }
           }

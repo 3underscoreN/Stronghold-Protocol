@@ -11,9 +11,11 @@
  * fallback of a word too long for its box); a line that starts with a small kana, ー, an iteration mark or a closing
  * mark (Japanese line-breaking rules, 禁則; also Chinese for the closing marks — line-break: normal lets Chrome break
  * before a small kana and ー); an ellipsis (one line's, or a line clamp's) anywhere but a player's name (.seat__name, .specbar__who) or a
- * plugin mode's own name (.room-mode, cut by design like a name); the page scrolling.
+ * plugin mode's own name (.room-mode, cut by design like a name), or a selector explicitly allowed by the caller;
+ * the page scrolling. `extraEllipsis` scopes an existing compact-label policy to the suite that checks its full
+ * accessible name and control bounds (the room's version pill, §35.23.11).
  */
-export function textProblems(rootSel) {
+export function textProblems(rootSel, extraEllipsis = '') {
   const TOL = 2;
   const out = [];
   const texts = [];
@@ -45,12 +47,12 @@ export function textProblems(rootSel) {
       const lh = cs.lineHeight === 'normal' ? parseFloat(cs.fontSize) * 1.2 : parseFloat(cs.lineHeight);
       const label = `${name(el)} "${txt.slice(0, 30)}"`;
       let boxes = rects.map((r) => { const m = (r.top + r.bottom) / 2, hh = Math.min(r.height, lh) / 2; return { l: r.left, r: r.right, t: m - hh, b: m + hh }; });
-      // an ellipsis — on one line, or the last of a line clamp (a long name's two lines on a phone, §35.51): allowed for a
-      // player's name only; what shows is the element's box (a clamp's lines past it are hidden)
+      // An ellipsis — on one line, or the last of a line clamp (a long name's two lines on a phone, §35.51): only the
+      // known name exceptions and a caller's scoped exception; what shows is the box (a clamp's later lines are hidden).
       const clamped = (a) => { const v = getComputedStyle(a).webkitLineClamp; return !!v && v !== 'none' && a.scrollHeight > a.clientHeight + 1; };
       const cut = [el, el.parentElement].find((a) => a && ((getComputedStyle(a).textOverflow === 'ellipsis' && a.scrollWidth > a.clientWidth + 1) || clamped(a)));
       if (cut) {
-        if (!cut.matches('.seat__name, .specbar__who, .room-mode')) out.push(`ellipsis ${label}`);
+        if (!cut.matches(`.seat__name, .specbar__who, .room-mode${extraEllipsis ? `, ${extraEllipsis}` : ''}`)) out.push(`ellipsis ${label}`);
         const ar = cut.getBoundingClientRect();
         boxes = boxes.map((b) => ({ ...b, l: Math.max(b.l, ar.left), r: Math.min(b.r, ar.right) }));
         if (clamped(cut)) boxes = boxes.filter((b) => (b.t + b.b) / 2 < ar.bottom);

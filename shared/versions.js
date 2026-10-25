@@ -17,8 +17,9 @@
 // The default is a code constant, never a server setting: data, rooms and logs without a version mean act2autochess.
 // tools/versions/<slug>.mjs holds each version's build profile (pins, adapters, expected counts). M0 built the data;
 // M2 tools bootstrap a selected version per process/worker (DESIGN §35.22.7–§35.22.9). Since M1 (DESIGN §35.23) a
-// server that enables a version (SP_VERSIONS) serves it, plays its rooms in version match hosts, and the page loads
-// its data (server/versions.js, public/js/versions.js).
+// server serves the versions it enables, plays their rooms in version match hosts, and the page loads their data
+// (server/versions.js, public/js/versions.js). Nothing set enables every id here; SP_VERSIONS or the `versions`
+// option narrows the list.
 
 import { N_ } from './i18n.js';
 

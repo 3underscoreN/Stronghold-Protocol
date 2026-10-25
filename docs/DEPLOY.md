@@ -517,24 +517,26 @@ Node 22 的 `--permission` **不限制网络**（TCP/UDP/DNS/监听均可能可�
 
 ## 11. 官方版本（0.3.2 起）
 
-除了现在的「第二期下半」（`act2autochess`），服务器还可以提供更早的三个官方版本：第二期上半（`act2autochess@V2_1`）、
-第一期下半（`act1autochess`）、第一期上半（`act1autochess@V1_1`）。数据随发布包和 Docker 镜像一起提供（`data/versions/`），
-**默认不开**：不设置时服务器只提供第二期下半，大厅里没有版本切换，房间、消息和以前完全一样（DESIGN §35.23）。
+除了现在的「第二期下半」（`act2autochess`），服务器还提供更早的三个官方版本：第二期上半（`act2autochess@V2_1`）、
+第一期下半（`act1autochess`）、第一期上半（`act1autochess@V1_1`）。数据随发布包和 Docker 镜像一起提供（`data/versions/`）。
+**不设置时四个版本都启用**（注册表顺序，默认版本仍是第二期下半），大厅右上角有「版本」。`npm start`、`scripts/start.sh` 和
+`scripts/start-windows.bat` 不用加参数。`SP_VERSIONS=act2autochess`（或只含第二期下半的列表）收窄到这一个版本，大厅不显示版本按钮。
+房间和消息里省略的版本字段仍表示代码常量 `act2autochess`（DESIGN §35.23.11）。
 
 | 环境变量 | 作用 |
 |---|---|
-| `SP_VERSIONS` | 启用哪些版本：`all`，或逗号分隔的版本 id，例如 `SP_VERSIONS=act2autochess,act1autochess`。写错的 id 在启动日志里提示并忽略 |
+| `SP_VERSIONS` | 启用哪些版本。不设置等于 `all`（四个都开）。也可写 `all`，或逗号分隔的版本 id，例如 `SP_VERSIONS=act2autochess,act1autochess`。写错的 id 在启动日志里提示并忽略。`SP_VERSIONS=act2autochess` 只开第二期下半 |
 | `SP_VERSION_DEFAULT` | 没有指定版本时新房间用哪个版本（默认第二期下半）；不在已启用列表里时提示，并改用第一个启用的版本 |
-| `SP_MAX_VERSION_HOSTS` | 版本对局子进程的上限（默认等于启用的非默认版本数） |
+| `SP_MAX_VERSION_HOSTS` | 版本对局子进程的上限（默认等于启用的非默认版本数；只要还有非默认版本，至少为 1） |
 
 - 启动日志会打印一行实际启用的版本，例如 `[versions] enabled: act2autochess (第二期下半, default), act1autochess (第一期下半)`。
 - 玩家在大厅里自己选版本（浏览器记住）；房间的版本由房主发起切换，房间里所有真人同意才生效（只有一个真人时立即生效）。
-- 非默认版本的对局在单独的子进程里运行（每个版本一个，同一版本的房间共用），和插件子进程分开计数：载入数据和对局代码后
-  每个约占 100+ MB 内存 [ASSUMED：按插件子进程实测的约 117 MB 估计]，空闲 10 分钟后自动结束；第一个房间开局时冷启动，
-  约 0.2 秒到几秒。小主机内存紧张时只启用需要的版本。
+- 非默认版本的对局在单独的子进程里运行（每个版本一个，同一版本的房间共用），和插件子进程分开计数。进程在该版本的第一局开局时才启动，
+  空闲的服务器不会额外拉起进程。载入数据和对局代码后每个约占 100+ MB 内存 [ASSUMED：按插件子进程实测的约 117 MB 估计]，空闲 10 分钟后自动结束；
+  冷启动约 0.2 秒到几秒。小主机内存紧张时用 `SP_VERSIONS` 只启用需要的版本，或用 `SP_MAX_VERSION_HOSTS` 限制同时存在的进程数。
 - 这些房间的 AI 布阵试算总在服务器上算（不会交给房主浏览器），CPU 比默认版本的房间略高。
 - 玩家第一次进入某个版本时，浏览器要下载该版本的数据（约 5 MB，之后缓存）。
-- `http://localhost:3000/healthz` 在启用了非默认版本时多一项 `versions`：启用的版本、默认版本和版本子进程的数量。
+- `http://localhost:3000/healthz` 在启用了非默认版本时多一项 `versions`（不设置时就会有）：启用的版本、默认版本和版本子进程的数量。空闲时 `workers` 为 0。
 - 也可以在 `startServer({ versions: { enabled, default, maxHosts } })` 里设置（优先于环境变量）。
 
 ## 12. 容量与调优（服务端配额）

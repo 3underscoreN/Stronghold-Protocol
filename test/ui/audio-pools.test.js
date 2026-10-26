@@ -507,30 +507,34 @@ for (const outcome of ['decoded', 'missing', 'rejected']) {
   });
 }
 
-test('screen cleanup stops the playing voice once while UI and prep bond feedback keep playing', async (t) => {
+test('screen cleanup stops playing field sounds once while UI and prep bond feedback keep playing', async (t) => {
   const f = fixture(t);
   f.a.getManifest = () => ({ audio: {
-    sfx: { ui: { click: '/click.mp3', bondUp: '/bond.mp3' } },
+    sfx: { battle: { deploy: '/landing.mp3' }, ui: { click: '/click.mp3', bondUp: '/bond.mp3' } },
     voice: { char_a: { select: '/voice.mp3' } },
   } });
   await f.play();
   const pooled = f.sources[0];
   f.a.voice('char_a', 'select');
+  f.a.deployCue({ def: 'char_a', kind: 'op' }, 'old-piece');
   f.a.sfx('click');
   f.a.layerGain('sargonShip', 1);
   await flush();
-  const voice = f.a.voiceNode.src;
-  const click = f.sources[2], bond = f.a.bondCueNode.src;
+  const voice = f.a.voiceNode.src, landing = f.a.landVoices[0].src;
+  const click = f.sources[3], bond = f.a.bondCueNode.src;
   f.a.stopFieldSounds(); f.a.stopFieldSounds();
-  assert.deepEqual([pooled.stopped, voice.stopped], [1, 1]);
-  assert.equal(f.a.limiter.active, 0);
+  assert.deepEqual([pooled.stopped, voice.stopped, landing.stopped], [1, 1, 1]);
+  assert.deepEqual([f.a.limiter.active, f.a.landLimiter.active, f.a.landVoices.length], [0, 0, 0]);
   assert.equal(f.a.voiceGate.playing, null);
   assert.equal(f.a.voiceNode, null);
   assert.deepEqual([click.stopped, bond.stopped], [0, 0]);
+  assert.equal(f.a.landStats.stolen, 0, 'field cleanup is not counted as landing takeover');
   f.a.voice('char_a', 'select');
+  f.a.deployCue({ def: 'char_a', kind: 'op' }, 'new-piece');
   await flush();
   const nextVoice = f.a.voiceNode;
-  voice.onended(); pooled.onended();
+  voice.onended(); landing.onended(); pooled.onended();
   assert.equal(f.a.voiceNode, nextVoice, 'late end callbacks leave the next line alone');
   assert.equal(f.a.voiceGate.playing?.slot, 'select');
+  assert.equal(f.a.landLimiter.active, 1, 'late end callbacks leave the next landing alone');
 });

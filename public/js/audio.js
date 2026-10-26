@@ -1290,10 +1290,11 @@ export class AudioManager {
     for (const voices of this.poolVoices.values()) for (const voice of [...voices]) voice.stop();
   }
 
-  /** End the field's sounds, including operator lines still loading. UI/BGM/bond cues are separate. */
+  /** End the field's sounds, including operator lines and prep landings still loading. UI/BGM/bond cues are separate. */
   stopFieldSounds() {
     this.stopPoolSounds();
     this._stopVoice();
+    for (const voice of [...this.landVoices]) this._stopLanding(voice);
   }
 
   /**
@@ -1554,7 +1555,7 @@ export class AudioManager {
 
   /**
    * Play a landing sound in the landing voices: never dropped for want of a voice — over LAND_VOICES (any file) the oldest
-   * landing, playing or still loading, gives its voice up (_stealLanding) and the new one starts; only the per-piece
+   * landing, playing or still loading, gives its voice up (_stopLanding) and the new one starts; only the per-piece
    * cooldown refuses one (the same piece twice within UNIT_COOLDOWN_MS: one landing never sounds twice), checked before
    * anything is taken over. The battle limiter is not touched. Muted or at SFX volume 0, nothing happens.
    * @param {string} url
@@ -1568,7 +1569,8 @@ export class AudioManager {
     if (pool.cooling(now, unitKey)) return;
     while (!pool.tryAcquire(now, unitKey, url)) {
       if (!this.landVoices.length) return;   // (a full pool always holds voices; never loop on a refusal it cannot lift)
-      this._stealLanding(this.landVoices[0]);
+      this._stopLanding(this.landVoices[0]);
+      this.landStats.stolen += 1;
     }
     const v = { url, src: null, gain: null, over: false, release: null };
     v.release = () => {
@@ -1598,10 +1600,9 @@ export class AudioManager {
     }, v.release);
   }
 
-  /** A landing sound gives its voice to a newer one: the voice is free at once, the sound fades out over LAND_STEAL_S. */
-  _stealLanding(v) {
+  /** Release a landing on takeover or field cleanup; a playing source fades out over LAND_STEAL_S. */
+  _stopLanding(v) {
     v.release();
-    this.landStats.stolen += 1;
     if (!v.src || !v.gain || !this.ctx) return;
     try {
       const t = this.ctx.currentTime;

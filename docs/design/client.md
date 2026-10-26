@@ -594,7 +594,8 @@ across fields, so repeated field changes cannot grow a stalled promise's handler
 2500 real ms are discarded when decoding finishes. Field replacement, returning to prep and game-screen cleanup
 invalidate pending callbacks with a field generation token, cancel delay timers and stop playing pool sources.
 Pending generic battle cues use that same field generation, including their plugin fallback. The field lifecycle's
-`stopFieldSounds()` also invalidates pending operator lines, releases their voice gate and fades out the current line.
+`stopFieldSounds()` also invalidates pending operator lines, releases their voice gate and fades out the current line;
+it releases prep landing voices immediately and fades any playing landing out, without counting cleanup as takeover.
 UI feedback, BGM and scoped bond cues retain their own lifecycles, so a new prep layer cue survives battle cleanup.
 These queue bounds, expiry and lifecycle/scheduling choices are web-client guards [ASSUMED]. A zero bank limit means no
 bank cap, still subject to the global budget. Missing pool metadata keeps the legacy two-copy behavior; sparse/custom

@@ -172,6 +172,7 @@
 .rseat {
   --w: min(18vw, 3.4rem, calc((100vw - 1.6rem) / var(--n, 4) - .3rem));
   position: relative;
+  isolation: isolate; /* keep the card's controls below top-bar dialogs after its entry animation (#888) */
   flex: none;
   width: var(--w);
   display: flex;

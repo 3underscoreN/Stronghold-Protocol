@@ -455,6 +455,9 @@ sliding, so a block — which freezes velocity — still turns it with the front
 
 ### Local preferences and recovery (§28.14, §28.18–20)
 
+Room seat cards isolate their internal layers so remove-player / AI buttons remain below the top-bar settings
+dialog and its backdrop, including after entry animations finish (#888, [0.3.4](../history/0.3.4.md)).
+
 Settings persist `textSize` (sm/md/lg/xl; default sm), `voiceLang` (cn/jp/en/kr; default cn), `voiceNative` (the
 本土语言 switch; default false), `voiceOverrides` (charId → cn/jp/en/kr/native; default empty), `prepDeployFold`
 (部署时收起商店; default true — only an explicit false turns the 0.3.0 deploy fold off) and `ammoEnergyCount`

@@ -170,6 +170,7 @@ export class PlayerRound {
         units.push(u);
       }
     }
+    const bandProgress = this.bandProgressView();
     return {
       playerId: this.playerId,
       seat: this.seat,
@@ -178,6 +179,7 @@ export class PlayerRound {
       units,
       bonds: bondSnapshot(reached ? this.bondsView() : this.bonds),
       bandId: this.bandId,
+      ...(bandProgress ? { bandProgress } : {}),
       playerEffects: this.effects.filter((e) => e.battle !== false).map((e) => ({
         id: e.id, key: e.key ?? null, source: e.iconKind ?? null, params: e.params ?? null, counter: e.counter ?? null, data: e.data ?? null,
       })),

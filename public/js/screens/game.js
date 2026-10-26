@@ -1917,7 +1917,7 @@ function MatchScreen() {
       </div>
 
       ${drawer ? html`<${EnemyDrawer} tab=${drawer} onTab=${setDrawer} pub=${pub} priv=${priv} onClose=${() => setDrawer(null)}
-        bandId=${scoutBandId} bandOwner=${scoutBandOwner}
+        bandId=${scoutBandId} bandOwner=${scoutBandOwner} effects=${scoutPid ? field?.effects : priv?.effects}
         onEnemy=${(k, n) => setDetail({ kind: 'enemy', id: k, count: n })} onChess=${(id) => setDetail({ kind: 'chess', id, foreign: true })} />` : null}
 
       ${bondPop ? html`<${BondPopup} bondId=${bondPop.bondId} entry=${bondPop.entry} priv=${bondPop.priv} banned=${pub?.bannedChess || []} owner=${bondPop.name} ownerId=${bondPop.ownerId}

@@ -70,7 +70,7 @@ bump; clients without these controls keep their existing messages.
   board: [ Piece & { row, col, dir } ],   // dir ∈ UP|RIGHT|DOWN|LEFT (§3; bench pieces carry none)
   deployCap, deployCount,
   bonds: [ { bondId, count, active, tier, layers, harmony? /* 调和's +1 is in count, §21.26 */, thresholds, countsHand } ],   // sorted: active first, then layers desc; an `off` entry (a bond the mode never activates, with members: count only, never active — the strip's grey 本局禁用 disc, bondsMeta.offBondCounts) comes last
-  effects: [ { id, name, desc, iconKind: 'band'|'choice'|'team'|'item'|'garrison', iconId, counter?, counterText? /* a bounty: 还剩 N 场作战, §20.6 */ } ],
+  effects: [ { id, name, desc, iconKind: 'band'|'choice'|'team'|'item'|'garrison', iconId, counter?, counterText?, progress?: {current,total}, roundProgress?: {current,total} /* read-only preparation counters; a bounty's counterText: 还剩 N 场作战, §20.6 */ } ],
   nextEnemies: [ { enemyKey, count, tag, start? } ],   // preview of the upcoming round's wave (after waves.js generation); `start` = a leader's spawn tile [row, col] on the boss field (the boss-field prep shows it standing there, community report #12)
   loadout: { [baseChessId]: { skill, module } },   // §16: the effective loadout (chess not listed: defaults)
   standIns: [ baseChessId ],   // 0.2.0 补位: the chess this player fields as their stand-ins in this match (sorted; [] = everything owned)

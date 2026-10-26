@@ -176,7 +176,7 @@ See [the strategy guide](../BOT_STRATEGIES.md) for the contract, registration an
 
 The optional `botbench --layers` audit wraps only benchmark match instances and records actual banked layers,
 source hooks, spending and round snapshots ([META §6](../META.md#6-testing--tools)). It never feeds decisions or
-counts rehearsal gains. The three §37.21 procurement/refresh trials were withdrawn; legacy policy is unchanged.
+counts rehearsal gains. The three §37.24 procurement/refresh trials were withdrawn; legacy policy is unchanged.
 
 The opt-in `ioleta` strategy applies [ASSUMED] staged Russell procurement to Russell seats and legacy prep to other
 bands. Its seat-local plan, core-merge/reward ordering and affordable search rules are recorded in

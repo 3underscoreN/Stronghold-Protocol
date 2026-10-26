@@ -1,4 +1,4 @@
-// Optional botbench diagnostics (history §37.21). Wrap only this match's instances;
+// Optional botbench diagnostics (history §37.24). Wrap only this match's instances;
 // never mutate gameplay state, handlers, prototypes or RNG. Not a policy input.
 // Gains are recorded at onLayers: actual clamped bank additions, including combat
 // settlement, never hypothetical rehearsal gains. Nested sources retain both a

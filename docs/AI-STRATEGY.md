@@ -673,7 +673,7 @@ they match `activity_table.json` `bossInfoDict` (§35.64).
 
 
 
-### Cycle 6 layer audit (§37.21, round54)
+### Cycle 6 layer audit (§37.24, round54)
 
 The default legacy bot's solo ABYSS seeds 1–40 still win 0/40. Of 28 boards entering R13, the main selected by
 `_botFocusId` has 74.96 layers after preparation; the 24 surviving R13 have 93.54 after settlement and 102.25
@@ -686,4 +686,4 @@ purchases decline; pricing already-owned refresh traits into refresh value; reta
 refresh stacker. Full deployment and a leak-free preceding round did not prevent lost development or guard
 regressions. There is no new production weight, difficulty exception or resource grant. Use
 `node tools/botbench.mjs --configs solo:ABYSS --seeds 40 --jobs 4 --layers --json layers.json` to reproduce the
-source ledger; history §37.21 gives all five configurations and the source/target comparisons.
+source ledger; history §37.24 gives all five configurations and the source/target comparisons.

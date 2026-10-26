@@ -136,10 +136,15 @@ test('manifest 2: what keeps a plugin out', () => {
 
 test('a value JSON.parse reads but JSON.stringify cannot write back (deep nesting) is quoted by its kind, never thrown', () => {
   const deep = (open, close, n = 20000) => JSON.parse(`${open.repeat(n)}${close.repeat(n)}`);
-  assert.match(readPluginManifest({ manifest: deep('[', ']') }, ctx('deep')).problems.join(), /"manifest": \[…\] is not 2/);
-  assert.match(readPluginManifest({ ...marathon(), api: deep('[', ']') }, ctx('marathon')).problems.join(), /"api": \[…\] is not an integer/);
-  assert.match(readPluginManifest({ ...marathon(), class: { a: deep('[', ']') } }, ctx('marathon')).problems.join(), /unknown class \{…\}/);
-  assert.match(normalizeManifest({ name: 'Q', machineTranslated: deep('[', ']') }, { id: 'qam', type: 'lang', lang: 'qam' }).warnings.join(), /"machineTranslated": \[…\] is not true or false/);
+  // Node ≥ 25 writes any depth back (its JSON.stringify no longer recurses): the quote is then the value's first 40
+  // characters. Older runtimes overflow and quote the kind ('[…]' / '{…}'). Either way it is reported, never thrown.
+  const writable = (() => { try { JSON.stringify(deep('[', ']')); return true; } catch { return false; } })();
+  const arr = writable ? '\\[{40}' : '\\[…\\]';
+  const obj = writable ? '\\{"a":\\[{35}' : '\\{…\\}';
+  assert.match(readPluginManifest({ manifest: deep('[', ']') }, ctx('deep')).problems.join(), new RegExp(`"manifest": ${arr} is not 2`));
+  assert.match(readPluginManifest({ ...marathon(), api: deep('[', ']') }, ctx('marathon')).problems.join(), new RegExp(`"api": ${arr} is not an integer`));
+  assert.match(readPluginManifest({ ...marathon(), class: { a: deep('[', ']') } }, ctx('marathon')).problems.join(), new RegExp(`unknown class ${obj}`));
+  assert.match(normalizeManifest({ name: 'Q', machineTranslated: deep('[', ']') }, { id: 'qam', type: 'lang', lang: 'qam' }).warnings.join(), new RegExp(`"machineTranslated": ${arr} is not true or false`));
   assert.equal(normalizeManifest({ name: 'Q', machineTranslated: { yes: 1 } }, { id: 'qam', type: 'lang', lang: 'qam' }).warnings[0],
     '"machineTranslated": {"yes":1} is not true or false (read as false)', 'an ordinary value is quoted as 0.2.0 quoted it');
 });

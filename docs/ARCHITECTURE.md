@@ -106,7 +106,7 @@ the watchdog window.
 - Capabilities bind to the actual WebSocket. Membership, connection or match changes replace the room epoch and
   clear readiness. Clients pulse `p2p.ready { epoch, ready, seq }` once per second; readiness expires after 3 seconds.
   `seq` is the watermark of the snapshot the client APPLIED (or that the state it holds supersedes) — never the last one
-  it merely received. The server retains only the latest unacknowledged snapshot per receiver. Its 2.5-second watchdog
+  it merely received. The server retains only the latest pending snapshot per receiver. Its 2.5-second watchdog
   is armed once and is neither postponed by a newer snapshot nor cancelled by an acknowledgement: a self-reported
   sequence is a hint, not proof. On timeout the server re-sends the latest signed frame over the receiver's own
   WebSocket, and — only when that receiver confirmed nothing since the snapshot was armed — marks it `fallback`,

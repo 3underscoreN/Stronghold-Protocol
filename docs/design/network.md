@@ -302,7 +302,7 @@ alike — so a delayed copy from either transport can never overwrite newer stat
 
 **Readiness and the fallback gap.** A receiver renews a 3 s lease with `p2p.ready { epoch, ready, seq }` once a second;
 `seq` is the watermark of the snapshot it APPLIED (or that the state it already holds supersedes), never the last frame it
-merely received. The server keeps only the newest unacknowledged snapshot per receiver behind a 2.5 s watchdog
+merely received. The server keeps only the newest pending snapshot per receiver behind a 2.5 s watchdog
 (`P2P_ACK_MS`) that a newer snapshot cannot postpone and an acknowledgement cannot cancel: a self-reported
 sequence is a hint, not proof. On timeout the server re-sends those signed bytes over the receiver's own WebSocket, and
 — only if that receiver confirmed nothing at all since the snapshot was armed — marks the frame `fallback`, blocks the

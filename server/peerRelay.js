@@ -3,6 +3,7 @@ import { generateKeyPairSync, randomBytes, sign } from 'node:crypto';
 import { ERR } from '../shared/constants.js';
 import { encode, sendRaw, sendSession } from './net.js';
 
+// [ASSUMED] Remake transport limits, not official gameplay values (docs/history/0.3.4.md §37.8).
 export const P2P_LEASE_MS = 3000;
 export const P2P_ACK_MS = 2500;
 export const P2P_FRAME_BYTES = 60 * 1024;

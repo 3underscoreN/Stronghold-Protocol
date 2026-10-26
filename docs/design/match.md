@@ -239,7 +239,9 @@ enemy replacements, teammate effects and in-battle layer gains. A Final Assault 
 `startRound` already planned, an independent seed `deriveSeed(0xA11CE, fa:round:seat)` (not the match seed and not the
 live fight's seed), a fresh boss pool per candidate, the teammate's currently deployed board, and the visible
 countdown on the combat clock (`bossLevelTime` real seconds × `combatTimeScale`, 240 game seconds when the data
-says 120; §35.64). Counted leaks still rank first; leader damage breaks a leak tie (#315). Each candidate uses an independent copy of the current
+says 120; §35.64). Counted leaks still rank first; leader damage breaks a leak tie (#315), then kills and candidate
+order. The layer-gain tie-break trial was withdrawn after a solo NORMAL win-rate regression (§37.17).
+Each candidate uses an independent copy of the current
 meta RNG. Candidate boards and events are detached; preview contexts expose copied reads and no-op state writers,
 including contexts reached through teammates/player. A separate dispatcher owns the preview script budget and drops
 preview errors; no live script quota, diagnostics or settlement is affected. Actual starts retain the original RNG

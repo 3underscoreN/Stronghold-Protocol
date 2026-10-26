@@ -333,7 +333,8 @@ and its own clone of the current meta RNG. A boss round (`m.wave` null, `bossGro
 same variants on that wave: seed `deriveSeed(0xA11CE, fa:${round}:${seat})` — not the match seed and not the live
 fight's seed — a fresh `bossPoolHp` pool per candidate, the teammate's current board, preview dispatch only, and a
 cap of the visible countdown on the combat clock (`faRehearsalTicks`: `bossLevelTime` × `combatTimeScale` game
-seconds; history §35.64). Counted leaks still rank first; `perPlayer.bossDamage` breaks a leak tie.
+seconds; history §35.64). Counted leaks rank first, then `perPlayer.bossDamage`, kills and candidate order.
+The layer-gain tie-break trial was withdrawn after the solo NORMAL guard regressed (history §37.17).
 `previewPlayer` builds a detached candidate board/hand/bonds view without
 calling live `recompute`; the original pieces, directions, hand/temp and dirty flags never change, even at a yield.
 The preview dispatcher supplies copied read results, no-op state writers, isolated teammate/player contexts and a

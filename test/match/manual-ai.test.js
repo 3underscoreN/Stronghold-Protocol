@@ -19,7 +19,7 @@ async function until(fn) {
   throw new Error('Timed out waiting for manual files');
 }
 
-test('manual solo stays pending beyond 300000 ms; co-op keeps its budget and reports fallback next time', t => {
+test('manual solo stays pending beyond 300000 ms; a co-op seat gets the whole turn and its timeout is the human one, never the bot', t => {
   assert.equal(externalConfig(undefined, { SP_EXTERNAL_AI_TRANSPORT: 'stdio', SP_EXTERNAL_AI_COMMAND: '["node","a"]', SP_EXTERNAL_AI_MANUAL_WAIT: '1' }).manualWait, true);
   for (const mode of ['solo', 'coop']) {
     const h = makeMatch({ mode, fake: true, seats: seats.slice(0, mode === 'solo' ? 1 : 4), botStrategy: 'external', externalReplay: true,
@@ -34,15 +34,47 @@ test('manual solo stays pending beyond 300000 ms; co-op keeps its budget and rep
       h.m.externalReply(j.id, { v: 'sp-ai/1', id: j.id, intents: [{ t: 'g.band', bandId: 'band_bldsk' }], done: false }, false);
       assert.equal(ps.bandId, 'band_bldsk');
     } else {
-      assert.ok(j.deadline > 0 && j.deadline < h.m.deadline);
+      assert.equal(j.deadline, h.m.deadline, 'no half of the turn is kept for the built-in bot');
       const original = h.m.externalAI.request.bind(h.m.externalAI), observed = [];
       h.m.externalAI.request = job => { if (job.ps === ps) observed.push(structuredClone(job.state.results)); original(job); };
-      h.sched.advance(j.deadline - h.sched.now());
-      assert.ok(ps.bandId, 'legacy completed the late draft');
-      h.run(() => observed.length > 0);
-      assert.ok(observed.flat().some(r => r.error === 'TIMEOUT' && r.fallback));
+      // the seat only highlights a strategy; the expired turn then takes the human timeout pick (the highlighted one)
+      const focus = [...h.m.gd.bandIds()].reverse().find(id => h.m.gd.bandAllowed(id) && !h.m.bandTaken(id, ps.playerId));
+      h.m.externalReply(j.id, { v: 'sp-ai/1', id: j.id, intents: [{ t: 'g.bandFocus', bandId: focus }], done: false }, false);
+      const again = pending(h.m);
+      assert.equal(again.ps, ps);
+      h.sched.advance(again.deadline - h.sched.now());
+      assert.equal(ps.bandId, focus, 'the human timeout pick, not a bot pick');
+      assert.equal(h.m.externalAI.metrics.fallbacks, 0);
+      h.run(() => observed.length > 1);
+      assert.ok(observed.flat().some(r => r.error === 'TIMEOUT' && r.fallback === false && /as for a human/.test(r.detail)));
     }
   }
+});
+
+test('a silent manual co-op seat keeps its own board through the prep timer; a broken reply is asked again, never handed to the bot', t => {
+  const h = makeMatch({ mode: 'coop', fake: true, seats, botStrategy: 'external', externalReplay: true, externalAI: { manualWait: true, timeoutMs: 300000 } });
+  t.after(() => h.m.dispose());
+  h.start();
+  for (let i = 0; i < 40 && !(h.m.phase === 'PREP' && pending(h.m)?.kind === 'prep'); i++) { // loop-cap: drafts time out
+    h.run(() => !!pending(h.m) || h.m.phase === 'PREP');
+    const j = pending(h.m);
+    if (!j || j.kind !== 'prep') h.sched.advance(j ? Math.max(1, j.deadline - h.sched.now()) : 1000);
+  }
+  const ps = h.m.order[0], j = [...h.m.externalAI.jobs.values()].find(x => x.ps === ps);
+  assert.equal(j.deadline, h.m.deadline, 'the whole prep');
+  const before = { gold: ps.stats.gold, board: ps.board.size, hand: ps.hand.filter(Boolean).length };
+  const first = j.id, seen = [], original = h.m.externalAI.request.bind(h.m.externalAI);
+  h.m.externalAI.request = job => { if (job.ps === ps) seen.push(...job.state.results); original(job); };
+  h.m.externalReply(first, { v: 'sp-ai/1', id: first, intents: [], done: false }, false); // invalid: no intents and not done
+  const again = [...h.m.externalAI.jobs.values()].find(x => x.ps === ps);
+  assert.ok(again && again.id !== first, 'asked again');
+  assert.ok(seen.some(r => r.error === 'EXTERNAL_ERROR' && r.fallback === false && /asking again/.test(r.detail)));
+  const round = h.m.round;
+  h.sched.advance(h.m.deadline - h.sched.now());
+  assert.ok(h.m.round > round || h.m.phase !== 'PREP', 'the prep timer ended the prep');
+  assert.deepEqual({ gold: ps.stats.gold, board: ps.board.size, hand: ps.hand.filter(Boolean).length }, before, 'no bot purchases or placements');
+  assert.equal(h.m.externalAI.metrics.fallbacks, 0);
+  assert.equal(h.m.externalAI.states.get(ps.playerId).disabled, false);
 });
 
 test('stdio zero request timeout remains cancellable; ordinary requests still time out', async t => {

@@ -33,7 +33,7 @@ Configuration is validated before server startup; an invalid configuration fails
 | `SP_EXTERNAL_AI_COMMAND` | Required for stdio: JSON argv array, no shell; 1–64 nonempty strings, each ≤4096 characters |
 | `SP_EXTERNAL_AI_SEATS` | Optional comma-separated seat indices, 0–3; omitted means all bot-controlled seats |
 | `SP_EXTERNAL_AI_TIMEOUT_MS` | 1000; integer 1–300000, both request timeout and total decision budget |
-| `SP_EXTERNAL_AI_MANUAL_WAIT` | `1` enables unlimited external waits in untimed solo direct decisions only; default off, co-op unchanged |
+| `SP_EXTERNAL_AI_MANUAL_WAIT` | `1` (dev manual seats, direct mode): unlimited waits in untimed solo windows; timed windows (co-op, timed solo versions) get the whole remaining window and the built-in bot never plays the seat (§37.30); default off |
 | `SP_EXTERNAL_AI_MAX_INTENTS` | 64; integer 1–256, cumulative across replies in one decision |
 | `SP_EXTERNAL_AI_MAX_BYTES` | 65536; integer 1–1048576, raw response bytes / stdio line, excluding newline |
 | `SP_EXTERNAL_AI_FAILURES` | 3; integer 1–20 consecutive failed decisions before match-long fallback (plan mode: protocol/transport errors only) |
@@ -91,7 +91,8 @@ node tools/ai/manual-act.mjs /tmp/sp-manual-solo '["a1"]'
 `@/absolute/path/answer.json`. During prep, `'{"done":true}'` submits `g.ready` through the human validator;
 a rejected Ready produces another observation. It never delegates an unfinished prep just because `done` was used.
 Each batch gets the next `obs-N` / `act-N` pair, including several exchanges within one prep. The cumulative
-limit is 256 intents per decision (remaining count is printed); reaching it without completion uses normal fallback.
+limit is 256 intents per decision (remaining count is printed); reaching it without completion leaves the decision to
+the phase timer, as for a human (§37.30).
 
 Four simultaneous manual seats, each with its own directory:
 
@@ -103,19 +104,23 @@ node tools/ai/manual-act.mjs /tmp/sp-manual-coop/seat-0 '["a1"]'
 
 Assign `/tmp/sp-manual-coop/seat-0` through `seat-3` to separate players/agents. Co-op always has four seats;
 `--seats 0,2` makes just those two manual and leaves the others on the built-in bot. Draft turns remain ordered;
-prep requests can be concurrent. The launcher uses the **real wall clock in co-op**. Normal phase timers,
-half-phase external budgets, the 300000 ms request cap and three-failure disabling rule remain in force.
-A late answer is ignored; the built-in bot continues, `--status` reports fallback, and the next observation
-includes `TIMEOUT` and the fallback reason. A third consecutive failure can leave no next manual observation.
-A newer request cancels that seat's old file waiter; stale files and another seat's files never answer it.
+prep requests can be concurrent. The launcher uses the **real wall clock in co-op** and the normal phase timers.
+§37.30 [ASSUMED]: a manual seat is never played by the built-in bot. Each decision gets the whole remaining phase
+or turn (capped at 300000 ms), not the half other external seats leave for legacy. When it runs out, the phase timer
+decides exactly as for a human: prep readies with the current board (temp resolved, a pending personal card picked
+at random), a band turn takes the highlighted strategy (`g.bandFocus`) or the default, a card turn a random card, an
+offer its timeout pick. A late answer is ignored and the next observation shows `TIMEOUT` with `fallback: false`. An
+invalid reply produces a fresh observation with `EXTERNAL_ERROR` while the window lasts (at most three in a row); the
+seat is never switched to legacy. A newer request cancels that seat's old file waiter; stale files and another seat's
+files never answer it.
 
 Solo uses botbench's virtual scheduler and waits for file IO. It selects the existing `soloUnlimited` option
 for historical versions too. `--version act1autochess --difficulty HARD` (or another supported version/difficulty pair) loads that version
 before the match. Historical versions do not offer ABYSS; unsupported combinations fail before creating session files.
 `SP_EXTERNAL_AI_MANUAL_WAIT=1` / explicit `externalAI.manualWait: true` is a dev-only, direct-mode switch
 that removes the host and transport decision timeout **only in untimed solo windows**, represented by
-`context.deadline: 0`. Timed windows and all co-op matches keep their normal budgets. The launcher sets this
-option explicitly. The knowledge handshake remains bounded. Abort, phase validity and disposal still apply.
+`context.deadline: 0`. Timed windows and all co-op matches keep their phase timers with the whole window and no bot
+fallback (above). The launcher sets this option explicitly. The knowledge handshake remains bounded. Abort, phase validity and disposal still apply.
 Release packages ignore this setting with the other `SP_EXTERNAL_AI_*` variables; the unchanged
 `LLM_RELEASE_EXCLUDE` / `tools/package.mjs` gate excludes all of `tools/ai/`, including these tools.
 

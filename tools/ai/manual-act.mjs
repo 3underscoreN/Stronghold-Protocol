@@ -11,10 +11,10 @@ try {
   console.log(status.obs || path.join(folder, 'result.md'));
   const expired = status.expiresAt != null && Date.now() >= status.expiresAt;
   if (!value || value === '--status') {
-    console.log(`${status.state}${expired && status.state === 'waiting' ? ' (deadline elapsed; host fallback)' : ''}; seat ${status.seat}; round ${status.round}; ${status.phase || ''} ${status.kind || ''}; intents left ${status.remaining ?? '—'}`);
+    console.log(`${status.state}${expired && status.state === 'waiting' ? ' (deadline elapsed; the phase timer decides)' : ''}; seat ${status.seat}; round ${status.round}; ${status.phase || ''} ${status.kind || ''}; intents left ${status.remaining ?? '—'}`);
     if (status.match && existsSync(status.match)) {
       const match = readJSON(status.match), seat = match.players.find(p => p.seat === status.seat);
-      console.log(`Match: round ${match.round} ${match.phase}; LP ${seat?.lp ?? '—'}${seat?.alive === false ? '; eliminated' : ''}${seat?.disabled ? '; external seat disabled, built-in bot continues' : ''}`);
+      console.log(`Match: round ${match.round} ${match.phase}; LP ${seat?.lp ?? '—'}${seat?.alive === false ? '; eliminated' : ''}`);
     }
     if (status.error) console.log(status.error);
     if (status.state === 'waiting' && existsSync(path.join(folder, `act-${status.n}.json`))) console.log('Answer queued.');

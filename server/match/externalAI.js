@@ -136,10 +136,12 @@ export class ExternalAI {
     const phaseDeadline = decision.deadline ?? m.deadline;
     // [ASSUMED] Reserve half the remaining phase for legacy; untimed phases still have the adapter's own cap.
     // §37.26 [ASSUMED]: the dev manual seat may wait indefinitely in untimed solo windows.
-    // Timed windows (including historical solo versions) and every co-op seat retain the normal budgets.
+    // §37.30 [ASSUMED]: a timed manual window (co-op, timed solo versions) gets the whole remaining phase or turn, and
+    // the built-in bot never plays a manual seat: an expired window is left to the phase timer as for a human.
     const untimed = this.config.manualWait && m.isSolo && !(phaseDeadline > 0);
-    const budget = untimed ? Infinity : Math.max(0, Math.min(this.config.timeoutMs, phaseDeadline > 0 ? (phaseDeadline - now) / 2 : Infinity));
-    if (budget <= 0) return false;
+    const share = this.config.manualWait ? 1 : 2;
+    const budget = untimed ? Infinity : Math.max(0, Math.min(this.config.timeoutMs, phaseDeadline > 0 ? (phaseDeadline - now) / share : Infinity));
+    if (budget <= 0) return this.config.manualWait;
     if (this.config.mode === 'plan' && decision.kind === 'prep') { state.prepRound = m.round; state.plan = carryPlan(state.acceptedPlan?.plan); }
     const job = { ...decision, key, ps, state, used: 0, deadline: untimed ? 0 : now + budget, id: null, controller: null, timer: null };
     if (!untimed) {
@@ -305,6 +307,7 @@ export class ExternalAI {
     if (this.jobs.get(job.id) !== job) return;
     const active = this.active(job);
     this.drop(job);
+    if (this.config.manualWait) { this.manualFail(job, reason, active); return; }
     if (!active) return;
     this.metric(job, 'fallbacks');
     if (this.config.mode === 'direct') {
@@ -327,6 +330,17 @@ export class ExternalAI {
       }
     }
     job.fallback();
+  }
+
+  // §37.30 [ASSUMED] A manual seat is never played by the built-in bot. A window that ends leaves the seat to the phase
+  // timer exactly as for a human (prep: Ready with the current board; drafts and offers: their timeout pick). A broken
+  // reply asks again while the window lasts, at most failureLimit times in a row; the seat is never switched to legacy.
+  manualFail(job, reason, active) {
+    const again = reason !== 'timeout' && active && job.used < this.config.maxIntents && ++job.state.failures < this.config.failureLimit;
+    job.state.results.push({ intent: null, error: reason === 'timeout' ? 'TIMEOUT' : 'EXTERNAL_ERROR', fallback: false,
+      detail: again ? `Decision ${job.id}: invalid reply, asking again` : `Decision ${job.id} ended; the phase timer decides as for a human (no bot fallback)` });
+    if (job.state.results.length > this.config.maxIntents) job.state.results.shift();
+    if (again) this.request(job);
   }
 
   drop(job) {

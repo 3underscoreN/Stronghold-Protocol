@@ -48,13 +48,15 @@ export async function manualMatch(options, { MatchClass = Match, scheduler } = {
     send: () => true, broadcast: () => {}, onEnd: result => { summary = result; resolveEnd(); },
     log: { info() {}, debug() {}, warn: s => console.error(s), error: s => console.error(s) },
   });
-  // Record host fallback immediately, including the third failure that disables the seat and has no next obs.
+  // Record an ended decision immediately. §37.30: the built-in bot never plays a manual seat; an expired window is left
+  // to the phase timer (as for a human) and a broken reply is followed by a new observation while the window lasts.
   const fail = m.externalAI.fail.bind(m.externalAI);
   m.externalAI.fail = (job, reason = 'error') => {
     const file = path.join(seatDir(root, mode, job.ps.seat), 'status.json');
     if (m.externalAI.jobs.get(job.id) === job && existsSync(file)) {
       const status = readJSON(file);
-      if (status.id === job.id) writeJSON(file, { ...status, state: 'fallback', error: `${reason}; built-in bot continues` });
+      if (status.id === job.id) writeJSON(file, { ...status, state: reason === 'timeout' ? 'expired' : 'error',
+        error: reason === 'timeout' ? 'timeout; the phase timer decides as for a human' : `${reason}; a new observation follows while the window lasts` });
     }
     return fail(job, reason);
   };

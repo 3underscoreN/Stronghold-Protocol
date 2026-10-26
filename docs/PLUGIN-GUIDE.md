@@ -534,11 +534,11 @@ unequip（official／allow）；每项下面显示作用说明。选「继承」
 | 插件没出现在列表里（被跳过）；启动日志和 check 写着原因 | `PLUGIN_CATALOG_HASH` | 目录条目缺少 sha256，或者不是 64 位小写十六进制：{detail} | 每个插件都写上它的 zip 的 SHA-256（64 位小写十六进制）。 |
 | 插件没出现在列表里（被跳过）；启动日志和 check 写着原因 | `PLUGIN_CATALOG_ID` | 插件 id 不合法或重复：{detail} | id 是 2 到 32 位小写字母、数字和连字符，并且在这份目录里只出现一次。 |
 | 插件没出现在列表里（被跳过）；启动日志和 check 写着原因 | `PLUGIN_CATALOG_FIELD` | 目录字段不合法：{detail} | 按 docs/plugin-catalog.example.json 写：版本是 semver，class 是已知类别，过长的文字要缩短。 |
-| 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_CATALOG_SIZE` | 目录文件太大：{detail} | 目录本身不超过 1 MB。插件 zip 用类别上限：外观插件 512 MB，其他类别 200 MB。 |
+| 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_CATALOG_SIZE` | 目录文件太大：{detail} | 目录本身不超过 1 MB。插件 zip 的外层上限是 512 MB；解压后外观插件上限 512 MB，其他类别 200 MB。 |
 | 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_CATALOG_FETCH` | 读不到这份目录：{detail} | 确认地址是公网 https 的 443 端口、服务器能访问它，并且没有被重定向到内网或非 https。这一次等待包含正文，不是每一跳重新计时。也可以改用本机的目录文件。 |
 | 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_URL` | 安装地址不是公网 https：{detail} | 只安装公网 https、443 端口的 zip。内网和本机地址默认拒绝。本机文件可以直接给出路径，包括 Windows 盘符和 UNC。 |
 | 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_HASH` | zip 的 SHA-256 对不上，或者没有给出：{detail} | https 安装必须带 --sha256（或目录条目里的 sha256）。哈希不对就不要安装。 |
-| 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_SIZE` | zip 超过大小上限，或和目录里写的字节数不一致：{detail} | 外观插件不超过 512 MB，其他类别 200 MB。目录里的 bytes 要和 zip 的实际大小一致。 |
+| 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_SIZE` | zip 超过大小上限，或和目录里写的字节数不一致：{detail} | zip 的外层上限是 512 MB；解压后外观插件上限 512 MB，其他类别 200 MB。目录里的 bytes 要和 zip 的实际大小一致。 |
 | 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_TIMEOUT` | 下载超时：{detail} | 检查网络后重试。zip 最长等 60 秒，目录最长等 20 秒。这一次等待包含连接、重定向和正文，不是每一跳重新计时。 |
 | 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_FETCH` | 下载失败：{detail} | 确认地址能打开，并且返回的是 zip（HTTP 200）。 |
 | 工作台里的操作被拒绝，旁边显示原因 | `PLUGIN_INSTALL_REDIRECT` | 下载被重定向到了非公网地址、非 443 端口，或重定向次数太多：{detail} | 只跟随公网 https、443 端口的重定向，最多 5 次。请换一个直接的 https 地址。 |

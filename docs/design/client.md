@@ -1065,3 +1065,12 @@ The title footer reopens it, with newer/older navigation limited to the running 
 `/CHANGELOG.md` is revalidated, including after update overlays; only that root document is served. Text-only Markdown
 supports headings, lists, code, emphasis and safe links; the document stays in its authored language. A failed fetch
 never marks it read. Unavailable storage falls back to once per page. Revision: [§37.1](../history/0.3.4.md).
+
+### COST / SP receipts (#657)
+
+Both renderers display settled resource receipts above the attributed operator, under the damage-number master
+switch. Official mode permits agent skill/charger kill COST gains and actual merchant deductions; default mode also
+permits pioneer skill gains ([ASSUMED] scope approved in #657). SP permits extra bond/talent/skill recovery only,
+excluding time, ordinary attack/hurt and initial SP. Full/locked bars and zero receipts show nothing. White COST,
+red deductions and cyan SP follow the issue examples; exact colours, 80% numeric size, centred placement, 0.9 s
+lifetime and up to two decimals are [ASSUMED]. Receipts do not merge. Revision: [§37.3](../history/0.3.4.md).

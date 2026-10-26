@@ -1692,6 +1692,7 @@ export async function createFieldView(host, options = {}) {
 
   function handleEvent(e, now) {
     switch (e[0]) {
+      case 'resource': fx.resourceNumber(views.get(e[1]), e); break;
       case 'spawn': {
         const info = applyInfo(e[1]);
         if (!info) break;

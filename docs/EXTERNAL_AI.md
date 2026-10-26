@@ -26,6 +26,7 @@ Configuration is validated before server startup; an invalid configuration fails
 | Variable | Meaning / default / bounds |
 |---|---|
 | `SP_BOT_STRATEGY` | `external` to enable; unset / empty selects `legacy` |
+| `SP_BOT_STRATEGY_SEATS` | Optional per-seat strategies, `seat:id,…` (e.g. `1:external`); enables external for the listed seats only ([strategy guide](BOT_STRATEGIES.md#per-seat-selection)) |
 | `SP_EXTERNAL_AI_TRANSPORT` | Required: `http` or `stdio` |
 | `SP_EXTERNAL_AI_URL` | HTTP(S) endpoint; no URL credentials or fragment |
 | `SP_EXTERNAL_AI_TOKEN` | Optional HTTP bearer token; environment only |
@@ -38,7 +39,9 @@ Configuration is validated before server startup; an invalid configuration fails
 | `SP_EXTERNAL_AI_BACKOFF_MS` | 1000; integer 1–60000 before the next demand can restart a failed stdio child |
 
 Seat selection applies to AI teammates, opponent seats in modes that use them, and humans under AI takeover.
-Unselected seats use `legacy`. INFO_CHECK acknowledgement and combat simulation remain engine-owned; decision
+Unselected seats use `legacy`. With `SP_BOT_STRATEGY_SEATS=1:external` (default strategy left unset or local),
+the match creates the same single external host and only seat 1 asks it; the other seats play their local
+strategies. A seat must select `external` and, when `SP_EXTERNAL_AI_SEATS` is set, be listed there too. INFO_CHECK acknowledgement and combat simulation remain engine-owned; decision
 points are band turns, common card turns, prep (including personal choices/rewards), and plugin offer windows.
 
 Example HTTP service (two terminals, POSIX shell):

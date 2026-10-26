@@ -19,6 +19,8 @@ SP_EXTERNAL_AI_URL=http://127.0.0.1:8765 SP_EXTERNAL_AI_SEATS=1 npm start
 ```
 
 `SEATS=1` 只接管编号 1 的 AI 席位（编号从 0 开始）；省略则接管全部 AI 席位与真人 AI 托管。
+也可以不设 `SP_BOT_STRATEGY`，改用 `SP_BOT_STRATEGY_SEATS=1:external` 只让 1 号席位走外部 AI，其余席位仍用各自的内置策略；
+整局只连接一个外部 AI，配置同样来自 `SP_EXTERNAL_AI_*`。两个变量同时设置时，席位须同时选了 `external` 并在 `SP_EXTERNAL_AI_SEATS` 里才会接管。
 第三方服务可填 HTTPS 地址；若需要鉴权，在环境变量 `SP_EXTERNAL_AI_TOKEN` 设置令牌。
 不要把令牌放进网址。程序收到的只有已有公开视图、该席位的私有视图和决策上下文，没有随机种子或其他人的私有数据。
 

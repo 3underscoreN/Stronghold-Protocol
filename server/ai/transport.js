@@ -68,7 +68,7 @@ export function httpDecision(config, observation, signal) {
       });
     });
     // Covers DNS/connect/header/body stalls, including trickled bodies; independent of the phase scheduler.
-    const timer = setTimeout(() => request.destroy(new Error('timeout')), config.timeoutMs);
+    const timer = config.timeoutMs === 0 ? null : setTimeout(() => request.destroy(new Error('timeout')), config.timeoutMs);
     request.on('close', () => clearTimeout(timer));
     request.on('error', () => reject(new Error('transport')));
     request.end(body);
@@ -125,7 +125,7 @@ export class StdioAI {
     });
   }
 
-  request(observation, signal) {
+  request(observation, signal, { timeoutMs = this.config.timeoutMs } = {}) {
     return new Promise((resolve, reject) => {
       if (signal.aborted) { reject(new Error('cancelled')); return; }
       try { this.start(); } catch { reject(new Error('backoff')); return; }
@@ -139,7 +139,7 @@ export class StdioAI {
         finish(true);
       };
       // No line from the child since this request was written: treat as a hang and restart after backoff.
-      const timer = setTimeout(() => (this.child === child && this.replies === replies ? this.breakChild() : cancel()), this.config.timeoutMs);
+      const timer = timeoutMs === 0 ? null : setTimeout(() => (this.child === child && this.replies === replies ? this.breakChild() : cancel()), timeoutMs);
       const finish = (error, reply) => {
         clearTimeout(timer);
         signal.removeEventListener('abort', cancel);

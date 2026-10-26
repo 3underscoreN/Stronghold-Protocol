@@ -95,6 +95,7 @@ test('a packaged server boots and plays a bot match while ignoring external-AI s
     SP_BOT_STRATEGY_SEATS: process.env.SP_BOT_STRATEGY_SEATS,
     SP_EXTERNAL_AI_TRANSPORT: process.env.SP_EXTERNAL_AI_TRANSPORT,
     SP_EXTERNAL_AI_URL: process.env.SP_EXTERNAL_AI_URL,
+    SP_EXTERNAL_AI_MANUAL_WAIT: process.env.SP_EXTERNAL_AI_MANUAL_WAIT,
     SP_LLM_URL: process.env.SP_LLM_URL,
   };
   let client;
@@ -118,6 +119,7 @@ test('a packaged server boots and plays a bot match while ignoring external-AI s
     process.env.SP_EXTERNAL_AI_TRANSPORT = 'http';
     process.env.SP_EXTERNAL_AI_URL = 'http://127.0.0.1:9';
     process.env.SP_LLM_URL = 'http://127.0.0.1:9';
+    process.env.SP_EXTERNAL_AI_MANUAL_WAIT = '1';
     const lines = [];
     const log = {
       info(s) { lines.push(String(s)); },
@@ -140,6 +142,7 @@ test('a packaged server boots and plays a bot match while ignoring external-AI s
     const gate = await import(pathToFileURL(path.join(stage, 'server/match/llmGate.js')).href);
     assert.equal(gate.releaseIgnoresExternalAi({ SP_BOT_STRATEGY_SEATS: '0:legacy, 1 : external' }), true);
     assert.equal(gate.releaseIgnoresExternalAi({ SP_BOT_STRATEGY_SEATS: '1:ioleta' }), false);
+    assert.equal(gate.releaseIgnoresExternalAi({ SP_EXTERNAL_AI_MANUAL_WAIT: '1' }), true);
     const res = await fetch(`${srv.url}/healthz`);
     assert.equal(res.status, 200);
     client = await TestClient.connect(`ws://127.0.0.1:${srv.port}/ws`);

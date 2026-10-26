@@ -105,15 +105,56 @@ test('user: Given a faction strategy teammate, When scoring shared high-tier che
       assert.equal(buyScoreOf(m, ps, id), inactive, 'inactive faction does not trigger yielding');
       m.gd.modeInactiveBonds.delete('siracusaShip');
     }
-    const unaffected = Object.values(DATA.chess).filter((c) => c.visible && !c.isGolden &&
-      (c.tier < 5 || !c.bonds.includes('siracusaShip')));
-    for (const c of unaffected) {
+    // #121: tiers I–IV of the faction yield 12 points, every other card is unaffected
+    for (const c of Object.values(DATA.chess).filter((x) => x.visible && !x.isGolden && !x.diyFor)) {
       mate.bandId = null;
       const ordinary = buyScoreOf(m, ps, c.chessId);
       mate.bandId = 'band_chiave';
-      assert.equal(buyScoreOf(m, ps, c.chessId), ordinary, c.name);
+      const yields = c.bonds.includes('siracusaShip') && m.pool.has(m.gd.baseIdOf(c.chessId));
+      assert.equal(buyScoreOf(m, ps, c.chessId), ordinary - (yields ? (c.tier >= 5 ? 18 : 12) : 0), c.name);
     }
   } finally { m.dispose(); }
+});
+
+test('#121: Given a teammate building a faction, When scoring its low-tier chess, Then the bot yields unless its own strategy needs the faction', () => {
+  const { m } = makeMatch({ humans: 2, seed: 11 }).start().toPrep();
+  const [ps, mate] = m.order;
+  try {
+    ps.bandId = mate.bandId = null;
+    const low = Object.values(DATA.chess).find((c) => c.visible && !c.isGolden && c.tier <= 2 && c.bonds.includes('lateranoShip')
+      && m.pool.has(m.gd.baseIdOf(c.chessId)));
+    assert.ok(low, 'a low-tier <拉特兰> operator in the pool');
+    const ordinary = buyScoreOf(m, ps, low.chessId);
+    mate.bandId = 'band_paganini';
+    assert.deepEqual(m.gd.bandBondIds('band_paganini'), ['lateranoShip'], '潘格尼尼 names <拉特兰>');
+    assert.equal(buyScoreOf(m, ps, low.chessId), ordinary - 12, 'the opening strategy reserves the faction at every tier');
+    ps.bandId = 'band_paganini';
+    assert.equal(buyScoreOf(m, ps, low.chessId), ordinary, 'the own opening strategy needs the faction too');
+    ps.bandId = mate.bandId = null;
+    // the main core bond on the public bond strip counts like an opening strategy
+    mate.bonds = { lateranoShip: { count: 3 } };
+    assert.equal(buyScoreOf(m, ps, low.chessId), ordinary - 12, 'a teammate building <拉特兰> on its board');
+    mate.alive = false;
+    assert.equal(buyScoreOf(m, ps, low.chessId), ordinary, 'an eliminated teammate needs nothing');
+  } finally { m.dispose(); }
+});
+
+test('#121: Given a living teammate, When the bot draws its strategy, Then 鸭爵 (it changes the teammates\' enemies) keeps a tenth of its weight', () => {
+  const duck = Object.values(DATA.bands).find((b) => /队友遭遇/.test(b.desc || ''));
+  assert.ok(duck && /鸭爵/.test(duck.name), '鸭爵 「神秘顾客」 is detected by its description');
+  const rate = (o) => {
+    const { m } = makeMatch(o).start();
+    try {
+      const bot = m.order[0];
+      let hits = 0;
+      for (let i = 0; i < 4000; i++) if (botPickBand(m, bot) === duck.bandId) hits++;
+      return hits / 4000;
+    } finally { m.dispose(); }
+  };
+  const alone = rate({ mode: 'solo', difficulty: 'NORMAL', seed: 5, seats: [{ seat: 0, playerId: 'ai_0', name: 'AI', isBot: true, connected: true }] });
+  const team = rate({ humans: 2, seed: 5 });
+  assert.ok(alone > 0.02, `drawn alone (${alone})`);
+  assert.ok(team > 0 && team < alone / 4, `rarer with a teammate (${team} vs ${alone})`);
 });
 
 test('user: Given a teammate faction strategy, When buying or taking a reward, Then prefer an alternative but retain an immediate own merge', () => {

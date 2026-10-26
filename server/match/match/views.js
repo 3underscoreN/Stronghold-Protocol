@@ -330,8 +330,9 @@ export class MatchViews {
         standInFor: rec && rec.standInFor ? rec.standInFor : undefined,
         diy,
         // 皮肤 (docs/SKINS.md): built per player (the owner of the scouted board), so a teammate's piece shows THEIR
-        // appearance; a 自选 slot fights as its pick's operator, which is the key it wears too
-        skin: ps.skinFor(rec, diy ? diy.charId : null) || undefined,
+        // appearance; a 自选 slot fights as its pick's operator, which is the key it wears too. A summon wears its
+        // owner's outfit (tokenSkin) — one token id can look different for two owners (official tokenSkinMap).
+        skin: (piece.kind === 'token' ? ps.tokenSkin(piece) : ps.skinFor(rec, diy ? diy.charId : null)) || undefined,
         ...cultivationInfo(lo),
       });
     }
@@ -399,8 +400,8 @@ export class MatchViews {
         progress: piece.kind === 'item' ? itemProgress(ps, piece) : undefined,
         standInFor: standIn && standIn.standInFor ? standIn.standInFor : undefined,
         diy,
-        // 皮肤 (docs/SKINS.md): the scouted player's own appearance (see the prep view above)
-        skin: ps.skinFor(rec, diy ? diy.charId : null) || undefined,
+        // 皮肤 (docs/SKINS.md): the scouted player's own appearance (see the prep view above); a summon follows its owner
+        skin: (piece.kind === 'token' ? ps.tokenSkin(piece) : ps.skinFor(rec, diy ? diy.charId : null)) || undefined,
         ...cultivationInfo(lo),
       });
     };

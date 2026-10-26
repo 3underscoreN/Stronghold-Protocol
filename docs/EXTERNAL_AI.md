@@ -381,7 +381,7 @@ SP_LLM_API_KEY="$YOUR_KEY" npm start
 
 `SP_LLM_BASE_URL`, `SP_LLM_MODEL`, `SP_LLM_API_KEY` are required environment values; the endpoint and key are
 never logged or journaled. `SP_LLM_TIMEOUT_MS` defaults to 20000 (1..300000). The adapter has no default provider or model.
-`SP_LLM_MAX_TOKENS` caps one reply (default 16000, 256–32000; reasoning models spend completion tokens before the plan, so a small cap returns an empty reply); a reply cut off by that cap before any JSON is asked once more with a short "decide now, JSON only" turn while half of `SP_LLM_TIMEOUT_MS` remains (the limit covers both requests; history §35.63); `SP_LLM_REASONING_EFFORT` (minimal / low / medium / high) is sent as `reasoning_effort` when set, `SP_LLM_RETRY_EFFORT` (same values) only on that retry; 机变 / offer / reward calls get a choice-only task and may echo `choiceName`, which corrects a mismatched choice ID when it names exactly one other card; `SP_LLM_DEBUG_FILE` appends one line per request with the failing stage, the reply head and the accepted plan, never the key or request headers.
+`SP_LLM_MAX_TOKENS` caps one reply (default 16000, 256–32000; reasoning models spend completion tokens before the plan, so a small cap returns an empty reply); a reply cut off by that cap before any JSON is asked once more with a short "decide now, JSON only" turn while half of `SP_LLM_TIMEOUT_MS` remains (the limit covers both requests; history §35.63); `SP_LLM_REASONING_EFFORT` (minimal / low / medium / high) is sent as `reasoning_effort` when set, `SP_LLM_RETRY_EFFORT` (the same four fixed values, not adaptive) only on that retry; 机变 / offer / reward calls get a choice-only task and may echo `choiceName`, which corrects a mismatched choice ID when it names exactly one other card; `SP_LLM_DEBUG_FILE` appends one line per request with the failing stage, the reply head and the accepted plan, never the key or request headers.
 It keeps eight knowledge versions in memory as stable system prompts, with an original general-principles
 strategy prompt, and sends only compact digest/choices/continuity per decision. Provider prompt caching can reuse that prefix;
 it is provider-dependent and still requires sending the prefix with the compatible stateless chat API.
@@ -407,7 +407,8 @@ SP_LLM_SESSION_HEADER=x-opencode-session` plus the plan's key in `SP_LLM_API_KEY
 
 #### Thinking controls and JSON diagnostics (0.3.4, in development)
 
-HTTP 429/503 responses may retry at most three times per decision (shared with any token-limit recovery).
+HTTP 429/503 responses may retry at most three times per decision. The existing one-call token-limit
+follow-up does not reset that rate-limit retry counter.
 The transport exposes only numeric `status` and parsed `retryAfterMs`, never the remote error body or headers.
 `Retry-After` accepts seconds or an HTTP date ([RFC 9110 §10.2.3](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after)).
 [ASSUMED] Waits are capped at 30 seconds, defaulting to 10 seconds when absent/invalid. A retry requires a
@@ -427,7 +428,8 @@ DeepSeek's [thinking documentation](https://api-docs.deepseek.com/guides/thinkin
 map `minimal` to `low`, and `medium` to `high`; thinking defaults to enabled/high. The explicit non-thinking
 switch is `thinking:{type:"disabled"}`. These are provider facts, not portable promises for other services.
 The small round54 probe found lower latency with low effort, but non-thinking made worse spending choices;
-the real-state replay and complete A/B run were blocked by HTTP 402 (insufficient balance). See
+the first replay and A/B attempt were blocked by HTTP 402 (insufficient balance). Cycle 5 below completed
+the comparison on OpenCode Go. See
 [the measurement and limitations](history/0.3.4.md#371-llm-latency-and-json-recovery-round54-in-development).
 
 Optional local diagnostics (never enabled by default):
@@ -450,6 +452,83 @@ the existing plan validation are still required. It records the syntax repair. M
 strings, fields, inner braces, arbitrary syntax errors and token-limit replies are not completed or guessed.
 This recovers both captured nonempty syntax failures; it cannot recover the captured empty reply, and it
 does not establish that all 35 head/tail-only cycle-3 failures had the same defect.
+
+#### Fixed default/low match comparison (cycle 5)
+
+Same code, OpenCode Go deepseek-v4.1-flash, default content version, ABYSS; eight solo and four co-op matches
+per side.
+
+| Setting | Wins | Reached FA | Mean FA share | Leaks/match | Applied | Valid-plan p50/p90 (s) |
+|---|---:|---:|---:|---:|---:|---:|
+| solo default | 0/8 | 4/8 | 23.69% | 45.50 | 132/134 (98.51%) | 28.610/67.540 |
+| solo low | 0/8 | 3/8 | 6.22% | 53.50 | 131/138 (94.93%) | 21.315/36.585 |
+| coop4 default | 0/4 | 1/4 | 2.05% | 202.00 | 142/221 (64.25%) | 30.270/75.282 |
+| coop4 low | 0/4 | 2/4 | 8.81% | 222.00 | 212/233 (90.99%) | 21.664/46.331 |
+
+Keep provider-default thinking for solo: low was faster but had lower FA share and more leaks. Solo prep has
+no phase countdown; the existing external-request cap still applies. Low did not meet all predeclared
+conditions (no worse FA share/leaks and more co-op replies applied), so fixed co-op low is not recommended
+from this run.
+Adaptive effort is an explicit next experiment: keep default when the budget permits, use low only for short
+co-op budgets. It has no real-match result yet. This is a descriptive small sample, not a win-rate or causal
+claim; outages and sequential service conditions affect latency. The release target remains unmet. See
+[§37.3](history/0.3.4.md#373-bounded-llm-rate-limit-retries-round54-cycle-5) for counts, costs, selection and limits.
+
+#### Adaptive effort (experimental opt-in, cycle 5)
+
+`SP_LLM_REASONING_EFFORT=adaptive` selects effort independently for each observation. For a co-op knowledge
+pack (`modeId` starts with `mode_multi_`), a known positive initial budget below 90000 ms selects `low`;
+otherwise it omits `reasoning_effort`, leaving the provider's default. The budget is the smaller of
+`SP_LLM_TIMEOUT_MS` and `context.deadline - public.serverNow`. These two host timestamps share a clock;
+the adapter never compares a virtual bench timestamp with local wall time. Solo, unknown modes, missing,
+nonfinite or expired timing keep the provider default. Timers, token caps, prompts and host fallback are unchanged.
+
+[ASSUMED] 90 seconds is an experimental threshold, informed by the measured default co-op prep p90 of
+77.460 seconds with some margin; it guarantees neither timely replies nor better play. Selection stays fixed
+for that decision's retries. An explicit `SP_LLM_RETRY_EFFORT` still overrides the existing token-limit follow-up;
+leave it unset to keep the adaptive choice throughout. `adaptive` is not accepted as a retry effort or with
+`SP_LLM_THINKING=disabled`. The adapter never sends the literal value `adaptive` to a provider. Adaptive debug
+lines add `reasoningEffort: "default" | "low"`; other configurations keep their existing request bodies.
+On the recorded default co-op observations, this threshold would choose low for 220/221 decisions. It does
+not establish that adaptive avoids the measured co-op quality tradeoff.
+This option was checked with mocks only; no paid adaptive match was run. Its use is an experiment, not a
+validated quality recommendation or a default change. The measured provider/model is OpenCode Go
+`deepseek-v4.1-flash`; do not extrapolate its effort behavior to another service.
+
+To try the option after configuring the gateway, use the measured host/provider caps of 170000/150000 ms
+and 16000 output tokens shown below; set `SP_LLM_REASONING_EFFORT=adaptive` and leave
+`SP_LLM_RETRY_EFFORT` / `SP_LLM_THINKING` unset. The fixed-effort comparison below did **not** enable it.
+
+#### Reproduce the fixed-effort comparison
+
+Load the key securely into `SP_LLM_API_KEY` without printing or saving it. Set `LLM_RESULTS` to a private results
+directory outside the checkout; each command below must finish before starting the next. The two sides use
+identical settings except for effort. Files must be unique; retain failed attempts and their usage when resuming.
+
+```sh
+export SP_LLM_BASE_URL=https://opencode.ai/inference/go/openai/v1
+export SP_LLM_MODEL=deepseek-v4.1-flash SP_LLM_SESSION_HEADER=x-opencode-session
+export SP_EXTERNAL_AI_MODE=plan SP_EXTERNAL_AI_TRANSPORT=stdio
+export SP_EXTERNAL_AI_COMMAND='["node","tools/ai/llm-agent.mjs"]'
+export SP_EXTERNAL_AI_TIMEOUT_MS=170000 SP_LLM_TIMEOUT_MS=150000 SP_LLM_MAX_TOKENS=16000
+unset SP_EXTERNAL_AI_SEATS SP_LLM_REASONING_EFFORT SP_LLM_RETRY_EFFORT SP_LLM_THINKING
+unset SP_LLM_CAPTURE_FILE SP_LLM_DEBUG_FULL_REPLY
+SP_LLM_DEBUG_FILE="$LLM_RESULTS/default-solo-debug.jsonl" node tools/botbench.mjs \
+  --bot external --configs solo:ABYSS --seed 1 --seeds 8 --jobs 2 --json "$LLM_RESULTS/default-solo.json"
+SP_LLM_DEBUG_FILE="$LLM_RESULTS/default-coop4-debug.jsonl" node tools/botbench.mjs \
+  --bot external --configs coop4:ABYSS --seed 1 --seeds 4 --jobs 1 --json "$LLM_RESULTS/default-coop4.json"
+export SP_LLM_REASONING_EFFORT=low
+SP_LLM_DEBUG_FILE="$LLM_RESULTS/low-solo-debug.jsonl" node tools/botbench.mjs \
+  --bot external --configs solo:ABYSS --seed 1 --seeds 8 --jobs 2 --json "$LLM_RESULTS/low-solo.json"
+SP_LLM_DEBUG_FILE="$LLM_RESULTS/low-coop4-debug.jsonl" node tools/botbench.mjs \
+  --bot external --configs coop4:ABYSS --seed 1 --seeds 4 --jobs 1 --json "$LLM_RESULTS/low-coop4.json"
+```
+
+These are paid commands, not repository tests. The cycle-5 local harness additionally collected host acceptance,
+provider `usage.opencode.list_cost`, and stopped new requests at a reported $8 total or a repeated fast transport
+failure. That harness is not part of the shipped adapter: the commands above do not enforce a money budget.
+After machine/network outages, only affected data was replaced: solo seed 7 at jobs 1 on both sides and the
+interrupted default co-op batch. Ordinary slow/invalid replies stayed in the comparison. See history §37.3.
 
 ### Committed round plans and private reasoning (§35.11)
 

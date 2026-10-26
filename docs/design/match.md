@@ -196,6 +196,10 @@ the default provider controls, legacy behavior nor the release gate. See [adapte
 original deadline. [ASSUMED] Retry-After is capped at 30 s (missing/invalid: 10 s), and each retry reserves
 half the original request budget after waiting. Numeric status/delay diagnostics never include remote error
 bodies. Exhaustion retains the generic failure and existing fallback; host timers and release isolation stay fixed.
+The opt-in `SP_LLM_REASONING_EFFORT=adaptive` policy keeps provider defaults for solo/ample or unknown budgets,
+and selects low for known co-op budgets below 90 s ([ASSUMED], experimental). It uses the host clock pair,
+never wall time against virtual time; fixed settings, prompts and timers stay unchanged. Cycle 5 tested fixed
+default/low, not adaptive; the adaptive path has mock validation only. See §37.3 and the adapter instructions.
 
 Maintainer request 2026-10-19 (§35.12): the example advisor's static knowledge includes a regenerable playbook
 from the active data and a sourced community overlay. [ASSUMED] Per-seat scoring uses only announced

@@ -171,7 +171,8 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
   const maxTokens = Number(env.SP_LLM_MAX_TOKENS || 16000);
   if (!Number.isInteger(maxTokens) || maxTokens < 256 || maxTokens > 32000) throw new Error('LLM configuration');
   const effort = env.SP_LLM_REASONING_EFFORT, retryEffort = env.SP_LLM_RETRY_EFFORT;
-  for (const e of [effort, retryEffort]) if (e && !['minimal', 'low', 'medium', 'high'].includes(e)) throw new Error('LLM configuration');
+  if (effort && !['minimal', 'low', 'medium', 'high', 'adaptive'].includes(effort)) throw new Error('LLM configuration');
+  if (retryEffort && !['minimal', 'low', 'medium', 'high'].includes(retryEffort)) throw new Error('LLM configuration');
   // DeepSeek's explicit switch; leave it absent for other providers and existing configurations.
   const thinking = env.SP_LLM_THINKING;
   if (thinking && !['enabled', 'disabled'].includes(thinking)) throw new Error('LLM configuration');
@@ -225,13 +226,23 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
     const strategy = strategyCandidates(pack.playbook, o.digest, history?.previousPlan);
     const shown = modelStrategy(strategy, o.context.kind);
     const choices = compactChoices(o.digest);
-    const info = { id: o.id, matchId: o.context.matchId, playerId: o.digest.playerId, kind: o.context.kind, round: o.digest.round };
+    // §37.3 [ASSUMED] Opt-in policy: preserve default thinking in solo and ample-budget co-op; below 90 s
+    // choose low. This threshold is experimental, not a guarantee of timely or stronger plans. Use the host's
+    // clock pair (bench clocks are virtual), not Date.now(); unknown/expired timing keeps the provider default.
+    // Resolve per decision, never mutate shared configuration; existing retries keep this choice.
+    const hostBudget = Number.isFinite(o.context.deadline) && Number.isFinite(o.public?.serverNow)
+      ? o.context.deadline - o.public.serverNow : NaN;
+    const shortCoop = typeof pack.modeId === 'string' && pack.modeId.startsWith('mode_multi_')
+      && Number.isFinite(hostBudget) && hostBudget > 0 && Math.min(timeoutMs, hostBudget) < 90000;
+    const selectedEffort = effort === 'adaptive' ? (shortCoop ? 'low' : undefined) : effort;
+    const info = { id: o.id, matchId: o.context.matchId, playerId: o.digest.playerId, kind: o.context.kind, round: o.digest.round,
+      ...(effort === 'adaptive' ? { reasoningEffort: selectedEffort || 'default' } : {}) };
     const choiceOnly = CHOICE_KINDS.has(o.context.kind);
     const question = choiceOnly ? { kind: o.context.kind, task: CHOICE_TASK, digest, choices }
       : { kind: o.context.kind, digest, continuity: history, strategy: shown, choices };
     const messages = [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(question) }];
     const body = { model: env.SP_LLM_MODEL, response_format: { type: 'json_object' }, max_tokens: maxTokens,
-      ...(effort ? { reasoning_effort: effort } : {}), ...(thinking ? { thinking: { type: thinking } } : {}), messages };
+      ...(selectedEffort ? { reasoning_effort: selectedEffort } : {}), ...(thinking ? { thinking: { type: thinking } } : {}), messages };
     // Shared bounded transport rejects redirects, including credential forwarding; errors are intentionally generic.
     const started = Date.now();
     let rateRetries = 0;

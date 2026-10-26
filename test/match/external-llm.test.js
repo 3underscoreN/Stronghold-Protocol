@@ -63,7 +63,7 @@ test('LLM retries 429/503 with bounded Retry-After or 10 seconds and private dia
 
 test('LLM rate-limit retry cap and insufficient budget retain the generic failure', async t => {
   for (const [status, header, timeout, expectedCalls] of [[429, '0', '2000', 4], [503, '0', '2000', 4],
-    [429, '1', '2000', 1], [429, undefined, '2000', 1], [402, '0', '2000', 1]]) {
+    [429, '1', '1500', 1], [429, undefined, '2000', 1], [402, '0', '2000', 1]]) {
     let calls = 0;
     const url = await mock(t, (req, res) => {
       req.resume(); req.on('end', () => {
@@ -168,6 +168,93 @@ test('LLM thinking controls are explicit, validated and independent of the token
     { SP_LLM_THINKING: 'disabled', SP_LLM_RETRY_EFFORT: 'minimal' }]) {
     assert.throws(() => createLLMAgent({ ...envFor('https://example.invalid'), ...setting }), /LLM configuration/);
   }
+});
+
+test('adaptive effort keeps solo/default thinking and uses low only for a short known co-op budget', async () => {
+  const coop = knowledgePack(DATA, { modeId: 'mode_multi_abyss', language: 'en' });
+  const unknown = { ...pack, version: 'unknown-mode', modeId: undefined };
+  const sent = new Map();
+  const agent = createLLMAgent({ ...envFor('https://example.invalid'), SP_LLM_TIMEOUT_MS: '150000',
+    SP_LLM_REASONING_EFFORT: 'adaptive' }, async (config, body) => {
+    const round = JSON.parse(body.messages[1].content).digest.round;
+    sent.set(round, { config, body });
+    return { choices: [{ finish_reason: 'stop', message: { content: '{}' } }] };
+  });
+  for (const knowledge of [pack, coop, unknown]) await agent({ ...hello, knowledge });
+  // These scheduler clocks intentionally differ from wall time. Every call shares the same agent, concurrently.
+  const cases = [
+    [pack, 170000, undefined], [pack, 30000, undefined], [coop, 90000, undefined], [coop, 89999, 'low'],
+    [coop, 25000, 'low', 'band'], [coop, 7550, 'low', 'card'], [coop, 200000, undefined],
+    [unknown, 30000, undefined], [coop, 0, undefined], [coop, -1, undefined],
+  ];
+  await Promise.all(cases.map(async ([knowledge, budget, expected, kind = 'prep'], index) => {
+    const id = `adaptive-${index}`;
+    await agent({ ...observation, id, knowledgeVersion: knowledge.version, public: { serverNow: 1000 },
+      context: { ...observation.context, kind, deadline: 1000 + budget }, digest: { ...observation.digest, playerId: id, round: index + 1 } });
+    const { body, config } = sent.get(index + 1);
+    assert.equal(body.reasoning_effort, expected, id);
+    assert.equal(Object.hasOwn(body, 'reasoning_effort'), expected !== undefined, 'omit the default, never send adaptive');
+    assert.equal(body.max_tokens, 16000);
+    assert.equal(body.thinking, undefined);
+    assert.ok(config.timeoutMs > 0 && config.timeoutMs <= 150000, 'provider cap is not the host clock');
+  }));
+  for (const [deadline, serverNow] of [[undefined, 1000], [31000, undefined], [Infinity, 1000],
+    [31000, NaN], ['31000', 1000], [31000, '1000'], [Number.MAX_VALUE, -Number.MAX_VALUE]]) {
+    const id = 'invalid-clock';
+    await agent({ ...observation, id, knowledgeVersion: coop.version, public: { serverNow },
+      context: { ...observation.context, deadline }, digest: { ...observation.digest, playerId: id, round: 0 } });
+    assert.equal(sent.get(0).body.reasoning_effort, undefined);
+  }
+});
+
+test('adaptive effort considers the provider cap without changing fixed effort or length-retry precedence', async () => {
+  const coop = knowledgePack(DATA, { modeId: 'mode_multi_abyss', language: 'en' });
+  const o = { ...observation, knowledgeVersion: coop.version, public: { serverNow: 1000 },
+    context: { ...observation.context, deadline: 171000 } };
+  for (const [effort, timeout, expected, retry] of [
+    ['adaptive', '20000', 'low', undefined], ['adaptive', '150000', undefined, undefined],
+    [undefined, '20000', undefined, undefined], ['high', '20000', 'high', undefined],
+    ['low', '150000', 'low', undefined], ['adaptive', '20000', 'low', 'minimal'],
+  ]) {
+    const sent = [];
+    const agent = createLLMAgent({ ...envFor('https://example.invalid'), SP_LLM_TIMEOUT_MS: timeout,
+      SP_LLM_REASONING_EFFORT: effort, SP_LLM_RETRY_EFFORT: retry }, async (_config, body) => {
+      sent.push(body);
+      return { choices: [{ finish_reason: sent.length === 1 ? 'length' : 'stop', message: { content: '{}' } }] };
+    });
+    await agent({ ...hello, knowledge: coop }); await agent(o);
+    assert.equal(sent.length, 2);
+    assert.equal(sent[0].reasoning_effort, expected);
+    assert.equal(sent[1].reasoning_effort, retry || expected);
+    assert.equal(sent[0].messages[0].content, sent[1].messages[0].content);
+  }
+  for (const setting of [{ SP_LLM_REASONING_EFFORT: 'auto' }, { SP_LLM_RETRY_EFFORT: 'adaptive' },
+    { SP_LLM_REASONING_EFFORT: 'adaptive', SP_LLM_THINKING: 'disabled' }]) {
+    assert.throws(() => createLLMAgent({ ...envFor('https://example.invalid'), ...setting }), /^Error: LLM configuration$/);
+  }
+});
+
+test('adaptive rate-limit recovery preserves the selected effort and records no private configuration', async t => {
+  const coop = knowledgePack(DATA, { modeId: 'mode_multi_abyss', language: 'en' });
+  const dir = mkdtempSync(join(tmpdir(), 'sp-llm-adaptive-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const debug = join(dir, 'debug.jsonl'), calls = [];
+  const agent = createLLMAgent({ ...envFor('https://example.invalid'), SP_LLM_TIMEOUT_MS: '150000',
+    SP_LLM_REASONING_EFFORT: 'adaptive', SP_LLM_DEBUG_FILE: debug }, async (_config, body) => {
+    calls.push(body);
+    if (calls.length === 1) throw Object.assign(new Error('remote test-secret'), { status: 429, retryAfterMs: 0 });
+    return { choices: [{ finish_reason: 'stop', message: { content: '{}' } }] };
+  });
+  await agent({ ...hello, knowledge: coop });
+  await agent({ ...observation, knowledgeVersion: coop.version, public: { serverNow: 1000 },
+    context: { ...observation.context, deadline: 31000 } });
+  assert.equal(calls.length, 2); assert.deepEqual(calls[0], calls[1]);
+  assert.equal(calls[0].reasoning_effort, 'low');
+  const text = readFileSync(debug, 'utf8');
+  const rows = text.trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(rows.map(r => r.stage), ['rate-limit', 'ok']);
+  assert.ok(rows.every(r => r.reasoningEffort === 'low'));
+  assert.ok(!text.includes('test-secret')); assert.ok(!text.includes('example.invalid'));
 });
 
 test('opt-in capture and full failure diagnostics redact credentials and keep reasoning usage off the wire', async t => {

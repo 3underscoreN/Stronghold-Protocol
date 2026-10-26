@@ -129,7 +129,7 @@ PowerShell 用 `$env:SP_BOT_STRATEGY = 'external'` 的形式逐个设置同名�
 
 `tools/ai/llm-agent.mjs` 通过 stdio 接入游戏，通过兼容的 `/chat/completions` 接口调用模型。
 需显式设置 `SP_LLM_BASE_URL`（包括 `/v1`）、`SP_LLM_MODEL`、`SP_LLM_API_KEY`，没有默认付费服务。
-密钥只从环境读取，不写日志／测试回放。`SP_LLM_MAX_TOKENS` 是单次回复的输出上限（默认 16000，256–32000）：会先“思考”的推理模型如果上限太小，思考就把额度用完，回复是空的；回复在给出 JSON 之前就被截断时，只要 `SP_LLM_TIMEOUT_MS` 还剩一半，会追问一次“现在决定、只回 JSON”（两次请求共用这个时限），`SP_LLM_RETRY_EFFORT` 可只给这次追问设较低的 `reasoning_effort`；机变／报价／奖励只问选择，模型可附上所选卡名 `choiceName`，与编号对不上且正好对应另一张卡时以卡名为准（§35.63）；`SP_LLM_REASONING_EFFORT`（minimal / low / medium / high）可以让支持该参数的服务商少想一些、回得更快；`SP_LLM_DEBUG_FILE` 指定一个本地文件后，每次请求的失败环节、模型回复开头和采用的计划会逐行写进去，方便判断它为什么回退、每回合怎么想，从不写入密钥或请求头。`SP_LLM_TIMEOUT_MS` 默认 20000，上限 300000（`SP_EXTERNAL_AI_TIMEOUT_MS` 上限同为 300000）；游戏侧的
+密钥只从环境读取，不写日志／测试回放。`SP_LLM_MAX_TOKENS` 是单次回复的输出上限（默认 16000，256–32000）：会先“思考”的推理模型如果上限太小，思考就把额度用完，回复是空的；回复在给出 JSON 之前就被截断时，只要 `SP_LLM_TIMEOUT_MS` 还剩一半，会追问一次“现在决定、只回 JSON”（两次请求共用这个时限），`SP_LLM_RETRY_EFFORT` 可只给这次追问设较低的 `reasoning_effort`；机变／报价／奖励只问选择，模型可附上所选卡名 `choiceName`，与编号对不上且正好对应另一张卡时以卡名为准（§35.63）；`SP_LLM_REASONING_EFFORT`（minimal / low / medium / high）可显式指定强度；另有下文默认关闭的 adaptive 预算策略；`SP_LLM_DEBUG_FILE` 指定一个本地文件后，每次请求的失败环节、模型回复开头和采用的计划会逐行写进去，方便判断它为什么回退、每回合怎么想，从不写入密钥或请求头。`SP_LLM_TIMEOUT_MS` 默认 20000，上限 300000（`SP_EXTERNAL_AI_TIMEOUT_MS` 上限同为 300000）；游戏侧的
 总预算还包括握手，并保留一半阶段时间给回退。示例配置（先在本地或可信服务端设置环境变量）：
 
 ```sh
@@ -159,7 +159,7 @@ SP_LLM_SESSION_HEADER=x-opencode-session`，密钥放在 `SP_LLM_API_KEY`。
 
 ### 思考开关与 JSON 诊断（0.3.4，开发中）
 
-HTTP 429／503 每个决策最多重试三次，与输出截断后的追问共用计数和原始时限。
+HTTP 429／503 每个决策最多重试三次；原有一次输出截断追问不会重置这个限流重试计数，所有调用共用原始时限。
 transport 错误只增加数字 `status` 和解析后的 `retryAfterMs`，不保留远端正文或请求头。
 `Retry-After` 支持秒数与 HTTP 日期（[RFC 9110 §10.2.3](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after)）。
 [ASSUMED] 等待上限 30 秒，缺失／无效时等 10 秒；等待后必须还留有完整的原请求预算一半，
@@ -174,7 +174,7 @@ transport 错误只增加数字 `status` 和解析后的 `retryAfterMs`，不保
 2026-10-26 核对 [DeepSeek 思考模式文档](https://api-docs.deepseek.com/guides/thinking_mode/)：
 `minimal` 映射到 `low`，`medium` 映射到 `high`，默认启用思考且强度为 high；关闭思考用
 `thinking:{type:"disabled"}`。这些映射只适用于该服务商。round54 小探针测到低强度更快，但关闭
-思考出现较差的资金选择；真实状态回放和完整 A/B 因 HTTP 402（余额不足）未完成，暂不改默认配置。
+思考出现较差的资金选择；首轮回放和 A/B 曾因 HTTP 402（余额不足）中断，后续 cycle5 完整结果如下。
 数字和限制见 [0.3.4 历史记录](history/0.3.4.md#371-llm-latency-and-json-recovery-round54-in-development)。
 
 可选诊断均默认关闭：`SP_LLM_DEBUG_FULL_REPLY=1` 配合 `SP_LLM_DEBUG_FILE` 保存最终失败回复的完整
@@ -188,6 +188,47 @@ messages、模型和控制参数）及对局／席位／请求／回合，用于
 包装的一个 `}`。[ASSUMED] 仅对最后三个字段依次为 plan／items／equip 的这一完整结构补一个括号，
 仍须通过 JSON 与原计划校验，并记录修复；截断的字符串／数组／字段、内部括号或 token 上限截断不修。
 捕获的两条非空语法错误均恢复，另一条空回复仍拒绝；不据此推断 cycle3 的 35 条全部同因。
+
+### 固定 default／low 完整对局（cycle5）
+
+同一代码、OpenCode Go deepseek-v4.1-flash，第二期下半终极；每侧单人8局／四人合作4局。
+
+| 设置 | 胜场 | 到达 FA | 平均 FA share | 漏怪／场 | 采用 | 有效计划 p50/p90 秒 |
+|---|---:|---:|---:|---:|---:|---:|
+| solo 默认 | 0/8 | 4/8 | 23.69% | 45.50 | 132/134 (98.51%) | 28.610/67.540 |
+| solo low | 0/8 | 3/8 | 6.22% | 53.50 | 131/138 (94.93%) | 21.315/36.585 |
+| coop4 默认 | 0/4 | 1/4 | 2.05% | 202.00 | 142/221 (64.25%) | 30.270/75.282 |
+| coop4 low | 0/4 | 2/4 | 8.81% | 222.00 | 212/233 (90.99%) | 21.664/46.331 |
+
+单人保留默认思考：low 虽更快，FA share 更低、漏怪更多。单人准备阶段没有回合倒计时，仍遵守原外部请求时限。
+low 没有同时满足 FA share／漏怪不差、合作回复采用更多的预定条件，暂不推荐固定合作 low。
+自适应可作为下一步显式实验：预算充裕时保留默认，短合作预算才用 low；尚无自适应真实对局结果。
+这是描述性小样本，不能证明总体胜率或因果；中断和分时服务负载会影响延迟，仍未达到发布目标。
+完整计数、费用、选样和限制见[§37.3](history/0.3.4.md#373-bounded-llm-rate-limit-retries-round54-cycle-5)。
+
+### 自适应思考（cycle5，实验性选项）
+
+显式设置 `SP_LLM_REASONING_EFFORT=adaptive` 才启用，每条观察独立选择。知识包的 `modeId`
+以 `mode_multi_` 开头、初始可用预算有效且大于 0、低于 90000 ms 时发 `reasoning_effort:low`；
+其他情况不发此字段，使用服务商默认。预算取 `SP_LLM_TIMEOUT_MS` 与
+`context.deadline - public.serverNow` 中较小者；两时间戳来自同一主机时钟，不把 bench 虚拟时间与
+本机墙钟相减。单人、未知模式、缺失／非有限／过期时钟均保留默认。时限、输出上限、提示词和回退不变。
+
+[ASSUMED] 90 秒参考默认合作 prep 实测 p90 77.460 秒并留余量，是待验证阈值，不能保证按时或更强。
+同一决策的重试保留这次选择；显式 `SP_LLM_RETRY_EFFORT` 仍会覆盖原有的输出截断追问，使用自适应时
+建议留空。retry effort 不接受 `adaptive`，`SP_LLM_THINKING=disabled` 也不能与其同设；服务商永远
+收不到字面量 `adaptive`。自适应诊断行增加 `reasoningEffort:default|low`，固定配置的请求体保持不变。
+该阈值在已记录的默认合作观察上会给 220/221 条决策选 low，不能据此认为自适应已解决合作质量取舍。
+只做了本地 mock 验证，**未做付费自适应对局**；这是实验选项，尚不是已证实的质量改进。测量对象仅为
+OpenCode Go 的 `deepseek-v4.1-flash`，不外推其他服务商。配置网关后沿用本次 host/provider
+170000/150000 ms、16000 输出 token，设置上述变量并清空 retry effort／thinking 即可尝试；本轮固定 default／low A/B 没有启用此选项。
+
+固定 A/B 的完整顺序命令见[英文接入说明](EXTERNAL_AI.md#reproduce-the-fixed-effort-comparison)：
+两侧均 host/provider 170000/150000 ms、16000 token；默认 solo:ABYSS seeds1–8/jobs2 → 默认
+coop4:ABYSS seeds1–4/jobs1 → low 的同两组。每条完成后才启动下一条，密钥只放环境，工件放 git 外。
+这些命令需要付费，普通 adapter 不设美元停机线；本轮额外的本地测量器累计全部尝试的
+`usage.opencode.list_cost`，到 $8 停止新请求，遇连续快速传输失败也停止。中断后只替换受影响数据：
+两侧单人 seed7 均降到 jobs1，默认合作批次重跑；正常慢回复、无效计划都保留。详见 §37.3。
 
 ### 连续规划与简短理由（§35.11）
 

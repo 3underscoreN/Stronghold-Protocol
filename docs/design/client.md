@@ -569,7 +569,7 @@ origin-wide Web Lock (`sp-imported-assets-v1:index`); the cache name and index J
 cooperating tabs from losing index updates. It does not lock an import's file writes or cache clearing. A browser
 without Web Locks keeps the previous sequential behaviour, without cross-tab serialization (ASSETS.md).
 
-### Waiting-room readiness sound (§36.4)
+### Waiting-room readiness sound (§37.5)
 
 In a co-op waiting room, an accepted human false-to-true ready transition in `room.state` plays `sfx.ui.ready` on
 every connected room member's client, including the sender and spectators. It uses the same manifest key as

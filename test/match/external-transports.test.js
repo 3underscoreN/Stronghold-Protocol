@@ -4,7 +4,7 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { externalConfig } from '../../server/match/externalConfig.js';
-import { httpDecision, StdioAI } from '../../server/ai/transport.js';
+import { httpDecision, retryAfterMs, StdioAI } from '../../server/ai/transport.js';
 import { exampleServer } from '../../tools/ai/http.mjs';
 
 const observation = { v: 'sp-ai/1', id: 'test', public: {}, private: { canReady: true }, context: { kind: 'prep' }, results: [] };
@@ -37,6 +37,24 @@ test('HTTP example on ephemeral loopback port returns human intents', async t =>
   const url = await serve(t, exampleServer());
   const result = await request(externalConfig({ transport: 'http', url }));
   assert.deepEqual(result, { v: 'sp-ai/1', id: 'test', intents: [{ t: 'g.ready', ready: true }], done: true });
+});
+
+test('HTTP status errors expose only the status and parsed Retry-After, never remote text', async t => {
+  const url = await serve(t, http.createServer((req, res) => {
+    req.resume();
+    res.writeHead(429, 'private-status', { 'retry-after': '12', 'x-private': 'private-header' }).end('private-body');
+  }));
+  await assert.rejects(request(externalConfig({ transport: 'http', url })), error => {
+    assert.equal(error.message, 'http-status');
+    assert.deepEqual({ ...error }, { status: 429, retryAfterMs: 12000 });
+    assert.ok(!String(error.stack).includes('private-'));
+    return true;
+  });
+  const now = Date.parse('Mon, 26 Oct 2026 00:00:00 GMT');
+  assert.equal(retryAfterMs('Mon, 26 Oct 2026 00:00:12 GMT', now), 12000);
+  assert.equal(retryAfterMs('Sun, 25 Oct 2026 23:59:59 GMT', now), 0);
+  assert.equal(retryAfterMs('0', now), 0);
+  for (const bad of [undefined, '', '-1', '1.5', 'secret', '9'.repeat(129)]) assert.equal(retryAfterMs(bad, now), undefined);
 });
 
 test('HTTP POST JSON, bearer header, redirects refused without forwarding credentials', async t => {

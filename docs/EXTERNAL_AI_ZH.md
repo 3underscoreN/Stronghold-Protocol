@@ -159,6 +159,14 @@ SP_LLM_SESSION_HEADER=x-opencode-session`，密钥放在 `SP_LLM_API_KEY`。
 
 ### 思考开关与 JSON 诊断（0.3.4，开发中）
 
+HTTP 429／503 每个决策最多重试三次，与输出截断后的追问共用计数和原始时限。
+transport 错误只增加数字 `status` 和解析后的 `retryAfterMs`，不保留远端正文或请求头。
+`Retry-After` 支持秒数与 HTTP 日期（[RFC 9110 §10.2.3](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after)）。
+[ASSUMED] 等待上限 30 秒，缺失／无效时等 10 秒；等待后必须还留有完整的原请求预算一半，
+醒来后再次检查。首次请求时限不变，所有尝试不延长 `SP_LLM_TIMEOUT_MS` 的总时限。
+调试 stage `rate-limit` 记录 `status`、拟等待 `waitMs`、是否安排重试 `retry` 和 `attempt`；
+重试次数／预算不足仍走原有通用 `LLM request` 失败与主机回退，其他 HTTP 状态不重试。
+
 `SP_LLM_THINKING=enabled|disabled` 显式发送 `thinking:{type:...}`；不设置仍使用服务商默认。
 `disabled` 不可与 `SP_LLM_REASONING_EFFORT` 或 `SP_LLM_RETRY_EFFORT` 同设，避免相互覆盖。
 输出上限仍为 16000，降低上限不等同于降低思考强度。

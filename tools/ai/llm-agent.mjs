@@ -234,13 +234,33 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
       ...(effort ? { reasoning_effort: effort } : {}), ...(thinking ? { thinking: { type: thinking } } : {}), messages };
     // Shared bounded transport rejects redirects, including credential forwarding; errors are intentionally generic.
     const started = Date.now();
+    let rateRetries = 0;
     const headers = { 'user-agent': userAgent,
       ...(sessionHeader ? { [sessionHeader]: createHash('sha256').update(key).digest('hex').slice(0, 32) } : {}) };
     const ask = async b => {
-      // Exact provider messages/body, never the transport config, endpoint, token or headers.
-      record(captureFile, { ...info, body: b });
-      try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, headers, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
-      catch { note({ ...info, stage: 'http', error: 'request-failed', usage: total, reasoningTokens, ms: Date.now() - started }); throw new Error('LLM request'); }
+      for (;;) { // loop-cap: at most three rate-limit retries across this decision, including the length retry
+        // Exact provider messages/body, never the transport config, endpoint, token or headers.
+        record(captureFile, { ...info, body: b });
+        try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, headers, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
+        catch (error) {
+          const status = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? error.status : undefined;
+          if (status === 429 || status === 503) {
+            // [ASSUMED] A full retry reserves half the original request budget (as with the length retry).
+            // Wait at most 30 s, default 10 s; never extend the original deadline or retry other HTTP failures.
+            const waitMs = Number.isFinite(error.retryAfterMs) && error.retryAfterMs >= 0 ? Math.min(30000, error.retryAfterMs) : 10000;
+            const retry = rateRetries < 3 && timeoutMs - (Date.now() - started) >= waitMs + Math.ceil(timeoutMs / 2);
+            note({ ...info, stage: 'rate-limit', status, waitMs, retry, attempt: rateRetries + 1, ms: Date.now() - started });
+            if (retry) {
+              rateRetries++;
+              await new Promise(resolve => setTimeout(resolve, waitMs));
+              // A suspended process / busy event loop can consume the reserved attempt while waiting.
+              if (timeoutMs - (Date.now() - started) >= Math.ceil(timeoutMs / 2)) continue;
+            }
+          }
+          note({ ...info, stage: 'http', error: 'request-failed', ...(status ? { status } : {}), usage: total, reasoningTokens, ms: Date.now() - started });
+          throw new Error('LLM request');
+        }
+      }
     };
     let total, reasoningTokens;
     const count = r => {

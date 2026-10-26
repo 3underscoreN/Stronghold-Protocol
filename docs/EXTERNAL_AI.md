@@ -407,6 +407,15 @@ SP_LLM_SESSION_HEADER=x-opencode-session` plus the plan's key in `SP_LLM_API_KEY
 
 #### Thinking controls and JSON diagnostics (0.3.4, in development)
 
+HTTP 429/503 responses may retry at most three times per decision (shared with any token-limit recovery).
+The transport exposes only numeric `status` and parsed `retryAfterMs`, never the remote error body or headers.
+`Retry-After` accepts seconds or an HTTP date ([RFC 9110 §10.2.3](https://www.rfc-editor.org/rfc/rfc9110.html#name-retry-after)).
+[ASSUMED] Waits are capped at 30 seconds, defaulting to 10 seconds when absent/invalid. A retry requires a
+full half of the original `SP_LLM_TIMEOUT_MS` budget after the wait, checked again on wake; all attempts share
+the original deadline. The initial attempt keeps its existing timeout. Debug stage `rate-limit` records
+`status`, `waitMs` (proposed delay), `retry` (whether scheduled), and `attempt`; exhausted retries/budget still
+produce the generic `LLM request` failure and existing host fallback. Other HTTP errors are not retried.
+
 `SP_LLM_THINKING=enabled|disabled` optionally sends `thinking:{type:...}`. Omitted means the provider's
 default, as before; the adapter does not infer a switch from the model name. `disabled` cannot be combined
 with either effort variable, since providers can give those conflicting switches different precedence.

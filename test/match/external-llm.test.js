@@ -26,6 +26,81 @@ const observation = { v: 'sp-ai/1', id: 'ai-1', knowledgeVersion: pack.version, 
   context: { mode: 'plan', kind: 'prep', matchId: 'mock-match' }, digest: { playerId: 'one', economy: { gold: 6 }, geometry: { omitted: true },
     actions: [{ id: 'a1', intent: { t: 'g.move' } }, { id: 'a2', intent: { t: 'g.reward' } }] } };
 
+test('LLM retries 429/503 with bounded Retry-After or 10 seconds and private diagnostics', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'sp-llm-backoff-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const waits = [], realTimeout = globalThis.setTimeout;
+  // Only accelerate the backoff; HTTP still uses its real deadline and loopback server.
+  t.mock.method(globalThis, 'setTimeout', (fn, ms, ...args) => {
+    if ([0, 1000, 10000, 30000].includes(ms)) { waits.push(ms); return realTimeout(fn, 0, ...args); }
+    return realTimeout(fn, ms, ...args);
+  });
+  for (const [status, header, expected] of [[429, undefined, 10000], [429, '1', 1000], [503, '999', 30000],
+    [503, 'bad-test-secret', 10000], [429, '0', 0]]) {
+    const bodies = [];
+    const url = await mock(t, (req, res) => {
+      req.setEncoding('utf8');
+      let body = ''; req.on('data', b => { body += b; }); req.on('end', () => {
+        bodies.push(body);
+        if (bodies.length === 1) { res.writeHead(status, header === undefined ? {} : { 'retry-after': header }).end('test-secret'); return; }
+        res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{}' } }],
+          usage: { prompt_tokens: 10, completion_tokens: 2 } }));
+      });
+    });
+    const file = join(dir, `${status}-${expected}.jsonl`);
+    const agent = createLLMAgent({ ...envFor(url), SP_LLM_TIMEOUT_MS: '150000', SP_LLM_DEBUG_FILE: file });
+    await agent(hello);
+    assert.deepEqual((await agent(observation)).usage, { inputTokens: 10, outputTokens: 2, cachedTokens: 0 });
+    assert.equal(bodies.length, 2); assert.equal(bodies[0], bodies[1]);
+    assert.equal(waits.at(-1), expected);
+    const text = readFileSync(file, 'utf8');
+    const [backoff, done] = text.trim().split('\n').map(line => JSON.parse(line));
+    assert.equal(backoff.stage, 'rate-limit'); assert.equal(backoff.status, status);
+    assert.equal(backoff.waitMs, expected); assert.equal(backoff.retry, true); assert.equal(done.stage, 'ok');
+    assert.ok(!text.includes('test-secret'));
+  }
+});
+
+test('LLM rate-limit retry cap and insufficient budget retain the generic failure', async t => {
+  for (const [status, header, timeout, expectedCalls] of [[429, '0', '2000', 4], [503, '0', '2000', 4],
+    [429, '1', '2000', 1], [429, undefined, '2000', 1], [402, '0', '2000', 1]]) {
+    let calls = 0;
+    const url = await mock(t, (req, res) => {
+      req.resume(); req.on('end', () => {
+        calls++; res.writeHead(status, header === undefined ? {} : { 'retry-after': header }).end('test-secret');
+      });
+    });
+    const agent = createLLMAgent({ ...envFor(url), SP_LLM_TIMEOUT_MS: timeout });
+    await agent(hello);
+    await assert.rejects(agent(observation), /^Error: LLM request$/);
+    assert.equal(calls, expectedCalls);
+  }
+});
+
+test('LLM rechecks the retry reserve after a delayed wake and shares the cap with length recovery', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 100000 });
+  const realTimeout = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', (fn, ms, ...args) => {
+    t.mock.timers.tick(100001);
+    return realTimeout(fn, 0, ...args);
+  });
+  let calls = 0;
+  const agent = createLLMAgent({ ...envFor('https://example.invalid'), SP_LLM_TIMEOUT_MS: '150000' }, async () => {
+    calls++; throw Object.assign(new Error('test-secret'), { status: 429, retryAfterMs: 0 });
+  });
+  await agent(hello); await assert.rejects(agent(observation), /^Error: LLM request$/);
+  assert.equal(calls, 1, 'no shortened attempt after an overdue wake');
+  t.mock.restoreAll();
+  let attempts = 0;
+  const length = createLLMAgent(envFor('https://example.invalid'), async () => {
+    attempts++;
+    if (attempts === 3) return { choices: [{ finish_reason: 'length', message: { content: '' } }] };
+    throw Object.assign(new Error('test-secret'), { status: 503, retryAfterMs: 0 });
+  });
+  await length(hello); await assert.rejects(length(observation), /^Error: LLM request$/);
+  assert.equal(attempts, 5, 'three rate-limit retries in total, not three per ask');
+});
+
 test('LLM adapter uses a stable cached system prefix, compact digest, JSON mode and numeric usage', async t => {
   const calls = [];
   const url = await mock(t, (req, res) => {

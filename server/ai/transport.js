@@ -6,6 +6,15 @@ import { spawn } from 'node:child_process';
 // x-opencode-session): plain token names and single-line values only; they can never replace the content headers or
 // the authorization, which are set after them.
 const RESERVED_HEADERS = new Set(['authorization', 'content-type', 'content-length', 'host', 'cookie', 'transfer-encoding']);
+// RFC 9110 §10.2.3: delta-seconds or HTTP-date. Retain only a numeric delay, never a remote header/body.
+export function retryAfterMs(value, now = Date.now()) {
+  if (typeof value !== 'string' || value.length > 128) return undefined;
+  const text = value.trim();
+  const ms = /^\d+$/.test(text) ? Number(text) * 1000
+    : /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun)/.test(text) ? Date.parse(text) - now : NaN;
+  return Number.isFinite(ms) ? Math.max(0, ms) : undefined;
+}
+
 function safeHeaders(h) {
   const out = {};
   if (!h || typeof h !== 'object') return out;
@@ -26,7 +35,12 @@ export function httpDecision(config, observation, signal) {
       method: 'POST', signal, headers: { ...safeHeaders(config.headers), 'content-type': 'application/json',
         'content-length': Buffer.byteLength(body), ...(config.token ? { authorization: `Bearer ${config.token}` } : {}) },
     }, response => {
-      if (response.statusCode !== 200) { response.destroy(); request.destroy(); reject(new Error('http-status')); return; }
+      if (response.statusCode !== 200) {
+        const error = Object.assign(new Error('http-status'), { status: response.statusCode });
+        const delay = retryAfterMs(response.headers['retry-after']);
+        if (delay !== undefined) Object.assign(error, { retryAfterMs: delay });
+        response.destroy(); request.destroy(); reject(error); return;
+      }
       const chunks = [];
       let size = 0;
       response.on('data', chunk => {

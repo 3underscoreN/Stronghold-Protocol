@@ -192,6 +192,11 @@ token cap. Opt-in local captures omit credentials/headers; debug usage may disti
 missing may recover that single brace before the unchanged validators. This changes neither match timers,
 the default provider controls, legacy behavior nor the release gate. See [adapter details](../EXTERNAL_AI.md).
 
+0.3.4 development adapter (§37.3): HTTP 429/503 can retry at most three times per decision, within the
+original deadline. [ASSUMED] Retry-After is capped at 30 s (missing/invalid: 10 s), and each retry reserves
+half the original request budget after waiting. Numeric status/delay diagnostics never include remote error
+bodies. Exhaustion retains the generic failure and existing fallback; host timers and release isolation stay fixed.
+
 Maintainer request 2026-10-19 (§35.12): the example advisor's static knowledge includes a regenerable playbook
 from the active data and a sourced community overlay. [ASSUMED] Per-seat scoring uses only announced
 bans/enemies, public teammate boards and own progress. §35.15: the band draft returns at most eight

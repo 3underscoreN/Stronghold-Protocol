@@ -851,7 +851,7 @@ export const PLUGIN_ERRORS = Object.freeze({
   PLUGIN_CATALOG_SIZE: {
     level: 'studio', doc: D.catalog,
     zh: '目录文件太大：{detail}', en: 'The catalogue file is too large: {detail}',
-    fix: { zh: '目录本身不超过 1 MB。插件 zip 用类别上限：外观插件 512 MB，其他类别 200 MB。', en: 'The catalogue document itself is at most 1 MB. A plugin zip has the class ceiling instead (512 MB for a cosmetic pack, 200 MB otherwise).' },
+    fix: { zh: '目录本身不超过 1 MB。插件 zip 的外层上限是 512 MB；解压后外观插件上限 512 MB，其他类别 200 MB。', en: 'The catalogue document itself is at most 1 MB. A plugin zip has a 512 MB outer cap; the extracted folder is limited to 512 MB for cosmetic packs, 200 MB otherwise.' },
   },
   PLUGIN_CATALOG_FETCH: {
     level: 'studio', doc: D.catalog,
@@ -871,7 +871,7 @@ export const PLUGIN_ERRORS = Object.freeze({
   PLUGIN_INSTALL_SIZE: {
     level: 'studio', doc: D.catalog,
     zh: 'zip 超过大小上限，或和目录里写的字节数不一致：{detail}', en: 'The zip is over the size cap, or it is not the byte length the catalogue names: {detail}',
-    fix: { zh: '外观插件不超过 512 MB，其他类别 200 MB。目录里的 bytes 要和 zip 的实际大小一致。', en: 'A cosmetic pack is at most 512 MB, every other class 200 MB. When the catalogue gives bytes, it has to be the zip size.' },
+    fix: { zh: 'zip 的外层上限是 512 MB；解压后外观插件上限 512 MB，其他类别 200 MB。目录里的 bytes 要和 zip 的实际大小一致。', en: 'A zip has a 512 MB outer cap; the extracted folder is limited to 512 MB for cosmetic packs, 200 MB otherwise. When the catalogue gives bytes, it has to be the zip size.' },
   },
   PLUGIN_INSTALL_TIMEOUT: {
     level: 'studio', doc: D.catalog,

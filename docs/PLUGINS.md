@@ -1727,8 +1727,8 @@ a link either (`server/plugins/pack.js plainPath`); every walk of a folder is bo
 folder past the limits, and `plugins/` is watched as a tree only while it holds at most 100 000 entries); a write goes to a
 dot-named temporary file renamed over the target; a body over the limit is refused before it is read and its connection
 closed; a file system error answers with its code only (its message, with the absolute path, stays in the log); a file at most
-64 MB, plugin.json at most 1 MB, a request at most 160 MB (a model's files in one go, base64), a plugin at most 512 MB
-(the largest class ceiling, a cosmetic pack) and 5000 files [ASSUMED: the studio's limits].
+64 MB, plugin.json at most 1 MB, a request at most 160 MB (a model's files in one go, base64), a plugin at most its class ceiling
+(512 MB for cosmetic packs, 200 MB otherwise) and 5000 files [ASSUMED: the studio's limits].
 
 **The error catalogue** (`shared/plugins/errors.js`, the 0.3.0 plan's interface C6): every `PLUGIN_*` code — the
 manifest and file rules, a cosmetic plugin's overlay and lock, the registry's scan, the packer, a room's refusals (the
@@ -1913,11 +1913,11 @@ lacks). The table below is generated from it (`node tools/plugin.mjs errors --wr
 | The plugin is not listed (skipped); the start log and check say why | `PLUGIN_CATALOG_HASH` | A catalogue entry has no sha256, or it is not 64 lowercase hex digits: {detail} | Each plugin names the SHA-256 of its zip (64 lowercase hex digits). |
 | The plugin is not listed (skipped); the start log and check say why | `PLUGIN_CATALOG_ID` | A plugin id is not valid, or it is repeated: {detail} | An id is 2 to 32 lowercase letters, digits and hyphens, and it appears once in the catalogue. |
 | The plugin is not listed (skipped); the start log and check say why | `PLUGIN_CATALOG_FIELD` | A catalogue field is not valid: {detail} | Follow docs/plugin-catalog.example.json: version is semver, class is a known class, and long text is shortened. |
-| The studio refuses the action and says why | `PLUGIN_CATALOG_SIZE` | The catalogue file is too large: {detail} | The catalogue document itself is at most 1 MB. A plugin zip has the class ceiling instead (512 MB for a cosmetic pack, 200 MB otherwise). |
+| The studio refuses the action and says why | `PLUGIN_CATALOG_SIZE` | The catalogue file is too large: {detail} | The catalogue document itself is at most 1 MB. A plugin zip has a 512 MB outer cap; the extracted folder is limited to 512 MB for cosmetic packs, 200 MB otherwise. |
 | The studio refuses the action and says why | `PLUGIN_CATALOG_FETCH` | The catalogue could not be fetched: {detail} | Check that the address is public https on port 443, that the server can reach it, and that it is not redirected to a non-public address or off https. The one deadline covers the body, not each redirect on its own. A local catalogue file works too. |
 | The studio refuses the action and says why | `PLUGIN_INSTALL_URL` | The install address is not a public https address: {detail} | Install a public https zip on port 443 only. A private or loopback address is refused unless the operator allowlist names it. A file on this machine can be given as a path, including a Windows drive or a UNC path. |
 | The studio refuses the action and says why | `PLUGIN_INSTALL_HASH` | The zip SHA-256 does not match, or none was given: {detail} | An https install needs --sha256 (or the sha256 of a catalogue entry). Do not install when the hash differs. |
-| The studio refuses the action and says why | `PLUGIN_INSTALL_SIZE` | The zip is over the size cap, or it is not the byte length the catalogue names: {detail} | A cosmetic pack is at most 512 MB, every other class 200 MB. When the catalogue gives bytes, it has to be the zip size. |
+| The studio refuses the action and says why | `PLUGIN_INSTALL_SIZE` | The zip is over the size cap, or it is not the byte length the catalogue names: {detail} | A zip has a 512 MB outer cap; the extracted folder is limited to 512 MB for cosmetic packs, 200 MB otherwise. When the catalogue gives bytes, it has to be the zip size. |
 | The studio refuses the action and says why | `PLUGIN_INSTALL_TIMEOUT` | The download timed out: {detail} | Check the network and try again. A zip waits up to 60 seconds, a catalogue up to 20. That one deadline covers the connection, the redirects and the body. |
 | The studio refuses the action and says why | `PLUGIN_INSTALL_FETCH` | The download failed: {detail} | Check that the address opens and answers with the zip (HTTP 200). |
 | The studio refuses the action and says why | `PLUGIN_INSTALL_REDIRECT` | The download was redirected to a non-public address, off port 443, or too many times: {detail} | Only a public https redirect on port 443 is followed, at most 5. Use a direct https address. |
@@ -2472,3 +2472,7 @@ sets pin the runtime bytes. Match hosts, bot rehearsals, studio trials and the b
 Workers still cannot fetch: the page verifies the runtime bytes before sending content. The standalone battle console
 does not replay preparation; use room test grants for gain effects. Forge's existing custom JavaScript handlers are
 not inferred from effect names or prose: this API does not automatically translate those handlers.
+
+Studio aggregate writes and staged candidates read `plugin.json` before applying the class ceiling. Replacing the manifest
+uses the incoming class; invalid JSON or an unknown class receives the 200 MB default, and a missing manifest retains the
+512 MB outer ceiling until its class is known. These are [ASSUMED] authoring limits, not game rules (§37.9).

@@ -1082,3 +1082,9 @@ Commercial Packaging displays each equipment instance's existing sale count and 
 original-owner rewards. Chiave displays active refresh progress and rewards earned this round without resetting counters.
 The sidebar and 本局信息 use the watched player's effects in both preparation scouting and combat spectating; a field
 with multiple members has no inferred owner's progress. Battle displays retain the values captured at preparation end.
+
+### Studio class size limits (§37.9)
+
+[ASSUMED] Cosmetic plugin folders may contain 512 MB; other classes retain 200 MB and all retain 5000 files.
+Studio aggregate writes and staged candidates enforce the manifest's class ceiling, using the incoming class for a
+manifest replacement. Downloads/catalogue entries use the 512 MB outer cap until the extracted manifest is checked.

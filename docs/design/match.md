@@ -305,13 +305,19 @@ adjusted count and reset scope stay limited to its own operators; the DIY export
 
 ### Cooperative buying, reactions and opening rerolls (§28.15–16, §28.21)
 
-[ASSUMED] Bot purchasing applies one soft 18-point penalty to non-elite, non-DIY tier V/VI shared-pool cards whose
-active bonds overlap another living teammate's opening strategy. Human and AI teammates are treated equally; it
-neither reserves stock nor prevents a stronger purchase. Existing strategy presets and rehearsal counts are unchanged.
+[ASSUMED] Bot purchasing applies one soft penalty to non-elite, non-DIY shared-pool cards whose bonds overlap what a
+living teammate needs — its opening strategy's bonds or its main core bond on its public bond strip (`teammateBonds`),
+minus the bonds the bot's own opening strategy needs: 18 points for tiers V/VI (PR #407), 12 for tiers I–IV (#121, a
+歌利亚 bot hoarding a 潘格尼尼 player's low-tier <拉特兰>). Human and AI teammates are treated equally and several
+teammates do not stack it; it neither reserves stock nor outweighs an own merge or a missing blocker / healer.
+Existing strategy presets and rehearsal counts are unchanged.
 A living teammate's selected strategy also soft-reserves its bonds for bot strategy selection and focus planning
 before any member is deployed (§30.28). The reservation ends when that teammate is eliminated. It does not hard-exclude
 a strategy, reserve stock, or stop an immediate merge. A reserved strategy keeps a quarter of its unreserved draw
 weight (`SOFT_BAND_RESERVE` = 0.25), so it can still be chosen. Mode-inactive bonds stay weight 0 (DESIGN §21.26).
+A strategy whose mechanic also changes the teammates' enemies (鸭爵 「神秘顾客」: from round 5 some enemies of the player
+and the teammates become 鸭爵 / 高普尼克 / 流泪小子 / 圆仔) keeps a tenth of its weight while a teammate lives
+(`MATE_BURDEN` = 0.1, #121); alone it is drawn as before.
 
 [ASSUMED] AI reactions are cosmetic social choices, enabled by default and disabled with `SP_BOT_EMOTES=0`. Only
 mixed human/AI matches emit them, through the existing whitelist and cooldown. A human emote gets at most one eligible

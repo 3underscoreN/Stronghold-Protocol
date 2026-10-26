@@ -98,6 +98,16 @@ describe('the settings entry of the lobby and the room', { skip: !ENABLED && 'se
       }));
       assert.ok(hits.length && hits.every((h) => h.covered), `${width}: ${JSON.stringify(hits)}`);
     }
+    // #888 follow-up: shrinking to a phone's short screen hides the room's tool buttons, not the open settings window
+    await page.setViewport({ width: 844, height: 390 });
+    await sleep(300);
+    const shortScreen = await page.evaluate(() => ({
+      modal: (() => { const m = document.querySelector('.modal .modal__box'); const r = m?.getBoundingClientRect(); return !!r && r.width > 0 && r.height > 0; })(),
+      button: (() => { const b = document.querySelector('.room-screen [data-testid="settings-btn"]'); return !!b && b.getClientRects().length > 0; })(),
+    }));
+    assert.deepEqual(shortScreen, { modal: true, button: false }, 'the open window stays, the toolbar button gives way');
+    await page.setViewport({ width: 1280, height: 720 });
+    await sleep(300);
     await page.evaluate(() => [...document.querySelectorAll('.modal button')].find((b) => /完成/.test(b.textContent))?.click());
     await sleep(300);
     assert.equal(await modalText(page), null, '完成 closes it');

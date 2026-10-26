@@ -524,7 +524,8 @@ function MatchScreen() {
   // a deploy interaction folds it for the interaction's duration (public issue #602).
   const shopFolded = showShop && (pen ? penRef.current.collapsed : (collapsed || deployFold));
   // the shop bar / board layout's displayed fold: the player's 收起 state, temporarily folded while deploying.
-  const barCollapsed = collapsed || deployFold;
+  const deployPartial = deployFold && playerSettings.prepDeployFold === 'partial' && !collapsed;
+  const barCollapsed = collapsed || (deployFold && !deployPartial);
 
   // own board (prep, or a battle field the player fights on) → the stage with the player's overrides; a teammate's
   // board → the plain stage (their overrides are not known here)
@@ -804,7 +805,7 @@ function MatchScreen() {
   useEffect(() => {
     const step = deployZoomStep(deployZoomedRef.current, deployFold);
     const next = prepDeployCamera({
-      pub, myId, deployFold, releaseDeploy: step.release, folded: shopFolded,
+      pub, myId, deployFold, partial: deployPartial, releaseDeploy: step.release, folded: shopFolded,
       ownPrep: !!view && viewModeRef.current === 'prep' && showPrep,
       pen, busy: !!drag || !!facing, current: camRef.current,
     });
@@ -813,7 +814,7 @@ function MatchScreen() {
     deployZoomedRef.current = deployZoomRemember(step, { next, pen });
     // the fold zoom and the restore fly with the short FOLD_CAMERA_MS, not a generic camera flight
     if (next) setCam(next.kind, { ...next.opts, ms: FOLD_CAMERA_MS });
-  }, [view, deployFold, shopFolded, showPrep, pen, !!drag, !!facing, prepCamKey]);
+  }, [view, deployFold, deployPartial, shopFolded, showPrep, pen, !!drag, !!facing, prepCamKey]);
 
   // 联防 / 最终攻势: the ‹ › pill moves the camera between the field's halves and 全景 (research 09 §3.1)
   useEffect(() => {
@@ -1824,7 +1825,7 @@ function MatchScreen() {
   // bonds this mode never activates (标准: 10 of 23, 奥术 among them) — shown 本局禁用 on cards, chips and the popup
   const offBonds = modeOffBonds(getMode(pub?.modeId));
 
-  return html`<div class=${cx('screen', 'gm', `gm--${mode}`, drag && 'is-dragging', barCollapsed && 'is-collapsed', (sp || hasPersonalChoice || offerBlocksPrep(pub?.offers)) && 'has-sp', sp && 'has-spdraft', pen && 'is-pen', readyWhy && 'has-readywhy')}
+  return html`<div class=${cx('screen', 'gm', `gm--${mode}`, drag && 'is-dragging', barCollapsed && 'is-collapsed', deployPartial && 'is-deploy-partial', (sp || hasPersonalChoice || offerBlocksPrep(pub?.offers)) && 'has-sp', sp && 'has-spdraft', pen && 'is-pen', readyWhy && 'has-readywhy')}
       data-camera=${pen ? 'pen' : camKind}>
     <div class="gm__field" ref=${hostRef} onContextMenu=${(e) => e.preventDefault()}></div>
     ${viewKind === 'loading' ? html`<div class="gm__loading"><${Spinner} label="LOADING FIELD" /></div>` : null}

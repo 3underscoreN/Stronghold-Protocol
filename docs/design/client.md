@@ -46,7 +46,8 @@ view.setCamera(kind /* 'prep'|'normal'|'unite'|'boss' */, { rect, side, shop, ms
                                              //   folded shop's prep camera (official shop-collapsed framing, §21.27);
                                              //   ms overrides the flight duration — the shop fold / unfold zoom takes
                                              //   the short FOLD_CAMERA_MS (render/app/tune.js, GitHub #602).
-                                             //   设置「部署时收起商店」 (prepDeployFold, default on) is that zoom;
+                                             //   设置「部署时收起商店」 (prepDeployFold, default true) is that zoom;
+                                             //   'partial' keeps a 70% shop and halfway official offsets [ASSUMED] (§37.4).
                                              //   off, a pickup changes neither the shop fold nor the camera (§34.3).
                                              //   Opening 敌方情报 during a held drag leaves that one-shot restore owed
                                              //   until the pen closes [ASSUMED] (§34.3).
@@ -460,7 +461,8 @@ dialog and its backdrop, including after entry animations finish (#888, [0.3.4](
 
 Settings persist `textSize` (sm/md/lg/xl; default sm), `voiceLang` (cn/jp/en/kr; default cn), `voiceNative` (the
 本土语言 switch; default false), `voiceOverrides` (charId → cn/jp/en/kr/native; default empty), `prepDeployFold`
-(部署时收起商店; default true — only an explicit false turns the 0.3.0 deploy fold off) and `ammoEnergyCount`
+(部署时收起商店; false = 关闭, 'partial' = 适度缩小, true = 完全收起, default true; old booleans keep their meaning)
+and `ammoEnergyCount`
 (显示弹药与能量数量; default false). A saved `ammoCount` or `mysticEnergy` of `true` migrates into `ammoEnergyCount`
 on read and is not written back. CSS text uses `--t`;
 the layout rem, camera and board geometry stay unchanged. Larger text and translated controls wrap within the settings
@@ -1062,3 +1064,21 @@ window is [ASSUMED]; damage, attack timing and targeting are unchanged.
 Skill model fallback (#786, §35.90): when facing up, a skill with an authored Front clip and only an attack fallback
 on Back uses Front through the skill clip and ending. Back-authored skills keep Back. [ASSUMED] This model choice
 is presentation inferred from the available animation roles; simulation facing and targeting do not change.
+
+### Release notes (#603)
+
+At first launch (including fresh installs) and after each APP_VERSION update, the title/lobby shows that version's
+CHANGELOG section, never during room/match play or session restoration. Dismissal is remembered per origin/version.
+The title footer reopens it, with newer/older navigation limited to the running release and its predecessors.
+`/CHANGELOG.md` is revalidated, including after update overlays; only that root document is served. Text-only Markdown
+supports headings, lists, code, emphasis and safe links; the document stays in its authored language. A failed fetch
+never marks it read. Unavailable storage falls back to once per page. Revision: [§37.1](../history/0.3.4.md).
+
+### COST / SP receipts (#657)
+
+Both renderers display settled resource receipts above the attributed operator, under the damage-number master
+switch. Official mode permits agent skill/charger kill COST gains and actual merchant deductions; default mode also
+permits pioneer skill gains ([ASSUMED] scope approved in #657). SP permits extra bond/talent/skill recovery only,
+excluding time, ordinary attack/hurt and initial SP. Full/locked bars and zero receipts show nothing. White COST,
+red deductions and cyan SP follow the issue examples; exact colours, 80% numeric size, centred placement, 0.9 s
+lifetime and up to two decimals are [ASSUMED]. Receipts do not merge. Revision: [§37.3](../history/0.3.4.md).

@@ -1909,3 +1909,12 @@ Default runs have no adaptive limits. See [BOT_STRATEGIES](BOT_STRATEGIES.md) fo
 
 Blemishine S3 (§35.91): kit trigger DEFAULT overrides the guardian class condition, while rawRule retains TAKE_DAMAGE.
 No damage/heal settlement or other guardian trigger changes.
+
+### Optional resource receipts (#657)
+
+`Battle({ resourceNumbers: true })` / `createBattleFromSpec(..., { resourceNumbers: true })` enables display-only
+`resource` events for live viewers; default false preserves headless/golden observation. `addDp(playerId, n, source?)`
+still returns the resulting DP balance; an attributed agent/charger/pioneer gain or merchant deduction emits only
+the actual signed change. `gainSp` keeps its original return contract and emits actual `spTotal` gained after the
+mutable hook and charge/cap normalization for `bond`, `talent`, `skill` only. The event is not a settlement hook.
+Browser hosts (including the worker) and server live battles enable it; previews do not. [§37.3](history/0.3.4.md).

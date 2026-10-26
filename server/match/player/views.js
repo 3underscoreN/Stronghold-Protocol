@@ -3,6 +3,7 @@
 // Installed on PlayerState.prototype by server/match/PlayerState.js (a method container: never instantiated; `this` is
 // the player state).
 
+import { itemProgress } from '../itemProgress.js';
 import { PHASE } from '../../../shared/constants.js';
 import { boardOrder, pieceDir } from '../board.js';
 import { bondList, offBondCounts } from '../bondsMeta.js';
@@ -19,7 +20,8 @@ export class PlayerViews {
       id: p.id,
       golden: !!(rec && rec.isGolden),
       tier: rec && Number.isInteger(rec.tier) ? rec.tier : null,
-      items: p.kind === 'chess' ? (p.items || []).map((it) => ({ uid: it.uid, id: it.id })) : [],
+      items: p.kind === 'chess' ? (p.items || []).map((it) => ({ uid: it.uid, id: it.id, ...this._itemProgressView(it) })) : [],
+      ...(p.kind === 'item' ? this._itemProgressView(p) : {}),
       count: p.kind === 'token' ? (p.count || 1) : 1,
       ownerUid: p.kind === 'token' ? p.ownerUid ?? null : null,
       // 皮肤: the prep board / hand / temp views carry it too, so a piece shows its appearance before it is deployed and
@@ -127,5 +129,10 @@ export class PlayerViews {
         refreshes: this.stats.refreshes, merges: this.stats.merges,
       },
     };
+  }
+
+  _itemProgressView(item) {
+    const progress = itemProgress(this, item);
+    return progress ? { progress } : {};
   }
 }

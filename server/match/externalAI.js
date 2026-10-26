@@ -80,6 +80,7 @@ export class ExternalAI {
   journalConfig() {
     return { ...Object.fromEntries(Object.keys(EXTERNAL_DEFAULTS).map(k => [k, this.config[k]])),
       knowledge: this.config.knowledge,
+      ...(this.config.manualWait ? { manualWait: true } : {}),
       ...(this.config.seats ? { seats: this.config.seats.slice() } : {}) };
   }
 
@@ -97,12 +98,17 @@ export class ExternalAI {
     const now = m.sched.now();
     const phaseDeadline = decision.deadline ?? m.deadline;
     // [ASSUMED] Reserve half the remaining phase for legacy; untimed phases still have the adapter's own cap.
-    const budget = Math.max(0, Math.min(this.config.timeoutMs, phaseDeadline > 0 ? (phaseDeadline - now) / 2 : Infinity));
+    // §37.26 [ASSUMED]: the dev manual seat may wait indefinitely in untimed solo windows.
+    // Timed windows (including historical solo versions) and every co-op seat retain the normal budgets.
+    const untimed = this.config.manualWait && m.isSolo && !(phaseDeadline > 0);
+    const budget = untimed ? Infinity : Math.max(0, Math.min(this.config.timeoutMs, phaseDeadline > 0 ? (phaseDeadline - now) / 2 : Infinity));
     if (budget <= 0) return false;
     if (this.config.mode === 'plan' && decision.kind === 'prep') { state.prepRound = m.round; state.plan = carryPlan(state.acceptedPlan?.plan); }
-    const job = { ...decision, key, ps, state, used: 0, deadline: now + budget, id: null, controller: null, timer: null };
-    job.timer = m.later(budget, () => this.fail(job, 'timeout'));
-    if (!this.replay) job.wallTimer = setTimeout(() => this.m.externalReply(job.id, null, 'timeout'), budget);
+    const job = { ...decision, key, ps, state, used: 0, deadline: untimed ? 0 : now + budget, id: null, controller: null, timer: null };
+    if (!untimed) {
+      job.timer = m.later(budget, () => this.fail(job, 'timeout'));
+      if (!this.replay) job.wallTimer = setTimeout(() => this.m.externalReply(job.id, null, 'timeout'), budget);
+    }
     this.request(job);
     return true;
   }
@@ -192,7 +198,9 @@ export class ExternalAI {
   }
 
   send(observation, signal) {
-    return this.transport ? this.transport.request(observation, signal) : httpDecision(this.config, observation, signal);
+    const timeoutMs = observation.context?.deadline === 0 && this.config.manualWait && this.m.isSolo ? 0 : this.config.timeoutMs;
+    return this.transport ? this.transport.request(observation, signal, { timeoutMs })
+      : httpDecision({ ...this.config, timeoutMs }, observation, signal);
   }
 
   receive(id, reply, failed) {
@@ -200,7 +208,7 @@ export class ExternalAI {
     if (!job) return;
     if (!this.active(job)) { this.drop(job); return; }
     if (job.started != null) { this.metric(job, 'latencyMs', performance.now() - job.started); job.started = null; }
-    if (failed || this.m.sched.now() >= job.deadline) { this.fail(job, failed === true ? 'error' : 'timeout'); return; }
+    if (failed || (job.deadline > 0 && this.m.sched.now() >= job.deadline)) { this.fail(job, failed === true ? 'error' : 'timeout'); return; }
     if (validUsage(reply?.usage) && reply?.usage) {
       this.metric(job, 'usageReports');
       for (const key of ['inputTokens', 'outputTokens', 'cachedTokens']) this.metric(job, key, reply.usage[key] || 0);
@@ -256,6 +264,11 @@ export class ExternalAI {
     this.drop(job);
     if (!active) return;
     this.metric(job, 'fallbacks');
+    if (this.config.mode === 'direct') {
+      job.state.results.push({ intent: null, error: reason === 'timeout' ? 'TIMEOUT' : 'EXTERNAL_ERROR',
+        detail: `External decision ${job.id} ended; built-in bot fallback`, fallback: true });
+      if (job.state.results.length > this.config.maxIntents) job.state.results.shift();
+    }
     // §35.62 [ASSUMED]: in plan mode legacy always continues the decision, so a slow reply (budget elapsed or the
     // agent's {plan: null}) is not a broken adapter: only protocol/transport errors count toward failureLimit, and
     // the carried plan stays. Direct mode keeps §35.8's rule (every failure counts, the plan is cleared).

@@ -310,3 +310,55 @@ node tools/botbench.mjs --compare legacy.json advisor.json
 
 `strategyMetrics` 是逐席真实结算数据，汇总的生存／LP／伤害为平均值，胜场和调用计数是总数。
 比较时也记录模型版本和配置，但不要把 API key、带凭证的 URL 写入结果文件。
+
+## 手动席位（仅开发版，§37.26）
+
+无需 API／密钥；在仓库根目录启动，目录必须为空。一局一目录：
+
+```sh
+node tools/ai/manual-match.mjs --dir /tmp/sp-manual-solo --mode solo --difficulty ABYSS --seed 7
+```
+
+另一终端查看状态、阅读打印路径中的 `obs-N.md`，再回答当前决策：
+
+```sh
+node tools/ai/manual-act.mjs /tmp/sp-manual-solo --status
+node tools/ai/manual-act.mjs /tmp/sp-manual-solo '["a1"]'
+```
+
+也接受原始意图数组，如 `'[{"t":"g.buy","slot":0}]'`，或 `@/absolute/path/answer.json`。
+`aN` 仅在当前观察有效；每批后产生新观察与新 `act-N.json`，同一次休整可以交互多次。
+休整的 `'{"done":true}'` 转成经过真人校验的 Ready；若有临时区／待选卡等阻碍，会显示拒绝并继续等输入。
+每次决策累计最多 256 个意图，观察中显示剩余额度；耗尽仍按现有规则回退。
+
+四席合作，每席各读写自己的子目录：
+
+```sh
+node tools/ai/manual-match.mjs --dir /tmp/sp-manual-coop --mode coop --difficulty ABYSS --seed 7 --seats 0,1,2,3
+node tools/ai/manual-act.mjs /tmp/sp-manual-coop/seat-0 --status
+node tools/ai/manual-act.mjs /tmp/sp-manual-coop/seat-0 '["a1"]'
+```
+
+可将 `seat-0` 到 `seat-3` 分配给四个独立代理；`--seats 0,2` 则另两席仍由内置人机控制。
+合作固定四席，使用真实时钟；选策略／公共机变仍按顺序，休整请求可以并发。
+保留现有阶段倒计时、外部决策至多剩余阶段一半／300000 ms、连续三次失败禁用本局外部席位的规则。
+超时动作不落地，内置人机继续；状态显示 fallback，下次观察显示 TIMEOUT 与回退原因。
+第三次连续失败后可能不再有下一份手动观察。旧文件不能回答新请求，也不能串到其他席位。
+
+单人用虚拟时钟等待文件，并为历史版本选择现有 `soloUnlimited` 不限时选项。
+`--version act1autochess --difficulty HARD` 或其他支持的版本／难度组合会在对局导入前加载对应数据；
+历史版本没有 ABYSS，不支持的组合会在创建会话文件前拒绝。
+默认关闭的 `SP_EXTERNAL_AI_MANUAL_WAIT=1`（显式配置 `manualWait: true`）只取消
+**单人、不限时窗口、direct 模式**的主机和传输决策超时，`context.deadline=0`；握手仍有界。
+合作或有时限的窗口不受影响。启动器自动配置此开关，发布包忽略该设置，原发布门禁继续排除全部 `tools/ai/`。
+
+观察以约 3–4k token 为目标、最多 9000 字符：包括商店／持有数、整备／临时／场上位置与精锐／装备、
+盟约计数／阈值／存层与短效果摘录、真人视图已有的策略计数、敌人入口／飞行预告、选项和校验反馈。
+合作仅显示队友公开阵容。庞大摆位列表会明确提示查看旁边完整 `obs-N.actions.md`；
+`obs-N.json` 为原始 digest，`obs-N.request.json` 为完整线协议观察，`knowledge.json` 为公开图鉴。
+动作文件原子写入且不覆盖；手写坏文件保留为 `act-N.invalid-K.json`，状态显示错误，可以更正重交。
+
+结束由启动器写 `result.md` 与完整 `result.json`：胜负、到达／通过回合、LP、最终攻势伤害／血池
+（隐秘核心前保存）、逐回合盟约存层、分类资金支出和回退次数。Ctrl-C 停止并保留文件，不提供断点续局。
+上述文件协议、长度上限、轮询与启动器选择均为 [ASSUMED] 开发工具策略，来自 round54 manual brief
+与维护者追加的多人手动席位需求，不修改游戏规则或内置人机策略。

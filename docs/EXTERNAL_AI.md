@@ -33,6 +33,7 @@ Configuration is validated before server startup; an invalid configuration fails
 | `SP_EXTERNAL_AI_COMMAND` | Required for stdio: JSON argv array, no shell; 1–64 nonempty strings, each ≤4096 characters |
 | `SP_EXTERNAL_AI_SEATS` | Optional comma-separated seat indices, 0–3; omitted means all bot-controlled seats |
 | `SP_EXTERNAL_AI_TIMEOUT_MS` | 1000; integer 1–300000, both request timeout and total decision budget |
+| `SP_EXTERNAL_AI_MANUAL_WAIT` | `1` enables unlimited external waits in untimed solo direct decisions only; default off, co-op unchanged |
 | `SP_EXTERNAL_AI_MAX_INTENTS` | 64; integer 1–256, cumulative across replies in one decision |
 | `SP_EXTERNAL_AI_MAX_BYTES` | 65536; integer 1–1048576, raw response bytes / stdio line, excluding newline |
 | `SP_EXTERNAL_AI_FAILURES` | 3; integer 1–20 consecutive failed decisions before match-long fallback (plan mode: protocol/transport errors only) |
@@ -68,6 +69,72 @@ The examples choose an untaken universal band, the first unsold card / available
 then Ready. They demonstrate the protocol, not strong play. The four example band IDs come from the public
 static `data/bands.json` catalogue; static game catalogues can be installed alongside any AI, just as clients
 load them. They are not hidden match state. The service binds only `127.0.0.1`; port `0` prints its assigned port.
+
+## Manual seats (development only, §37.26)
+
+The manual tools use the same direct-mode validator and `sp-ai/1` stdio transport, with no API or key.
+Run from the repository root. Use a **new, empty directory** for each match:
+
+```sh
+node tools/ai/manual-match.mjs --dir /tmp/sp-manual-solo --mode solo --difficulty ABYSS --seed 7
+```
+
+In another terminal, inspect the current observation and answer one decision:
+
+```sh
+node tools/ai/manual-act.mjs /tmp/sp-manual-solo --status
+node tools/ai/manual-act.mjs /tmp/sp-manual-solo '["a1"]'
+```
+
+`a1` means the action shown in that observation, not a stable action across requests. Read the printed
+`obs-N.md` before answering. A raw batch also works, e.g. `'[{"t":"g.buy","slot":0}]'`, or pass
+`@/absolute/path/answer.json`. During prep, `'{"done":true}'` submits `g.ready` through the human validator;
+a rejected Ready produces another observation. It never delegates an unfinished prep just because `done` was used.
+Each batch gets the next `obs-N` / `act-N` pair, including several exchanges within one prep. The cumulative
+limit is 256 intents per decision (remaining count is printed); reaching it without completion uses normal fallback.
+
+Four simultaneous manual seats, each with its own directory:
+
+```sh
+node tools/ai/manual-match.mjs --dir /tmp/sp-manual-coop --mode coop --difficulty ABYSS --seed 7 --seats 0,1,2,3
+node tools/ai/manual-act.mjs /tmp/sp-manual-coop/seat-0 --status
+node tools/ai/manual-act.mjs /tmp/sp-manual-coop/seat-0 '["a1"]'
+```
+
+Assign `/tmp/sp-manual-coop/seat-0` through `seat-3` to separate players/agents. Co-op always has four seats;
+`--seats 0,2` makes just those two manual and leaves the others on the built-in bot. Draft turns remain ordered;
+prep requests can be concurrent. The launcher uses the **real wall clock in co-op**. Normal phase timers,
+half-phase external budgets, the 300000 ms request cap and three-failure disabling rule remain in force.
+A late answer is ignored; the built-in bot continues, `--status` reports fallback, and the next observation
+includes `TIMEOUT` and the fallback reason. A third consecutive failure can leave no next manual observation.
+A newer request cancels that seat's old file waiter; stale files and another seat's files never answer it.
+
+Solo uses botbench's virtual scheduler and waits for file IO. It selects the existing `soloUnlimited` option
+for historical versions too. `--version act1autochess --difficulty HARD` (or another supported version/difficulty pair) loads that version
+before the match. Historical versions do not offer ABYSS; unsupported combinations fail before creating session files.
+`SP_EXTERNAL_AI_MANUAL_WAIT=1` / explicit `externalAI.manualWait: true` is a dev-only, direct-mode switch
+that removes the host and transport decision timeout **only in untimed solo windows**, represented by
+`context.deadline: 0`. Timed windows and all co-op matches keep their normal budgets. The launcher sets this
+option explicitly. The knowledge handshake remains bounded. Abort, phase validity and disposal still apply.
+Release packages ignore this setting with the other `SP_EXTERNAL_AI_*` variables; the unchanged
+`LLM_RELEASE_EXCLUDE` / `tools/package.mjs` gate excludes all of `tools/ai/`, including these tools.
+
+Each seat gets compact `obs-N.md` (roughly a 3–4k-token target, capped at 9000 characters), the exact raw
+`digest` in `obs-N.json`, the full wire observation in `obs-N.request.json`, and every shortcut with its
+intent in `obs-N.actions.md`. Large placement lists overflow into these companion files, explicitly marked.
+`knowledge.json` holds the public catalogue and effects. The compact page includes economy, owned pieces and
+equipment, bond counts/thresholds/layers and short effect excerpts, band progress exposed by the human view,
+public enemy gates/fliers, choices, teammate public boards, and accepted/rejected intents. Gate names describe
+the human preview, not a newly inferred route. No private teammate shop/hand, future rolls or stock is exposed.
+
+The helper publishes a complete answer atomically and refuses overwriting an answered observation. A malformed
+handwritten file is retained as `act-N.invalid-K.json`; `--status` reports the error so it can be corrected.
+`result.md` is written by the launcher at match end (the host terminates its stdio child): win/loss, reached/passed
+rounds, LP, Final Assault damage/pool, banked layers by round, spending by kind and fallback count. `result.json`
+retains the settlement and layer/spending ledger for auditing; FA damage is captured before any Hidden Core.
+Ctrl-C stops the match and marks the directories stopped; existing files remain, but this is not a resume format.
+All file naming, compact limits, polling and launcher choices are **[ASSUMED] tooling policy**, requested by
+the round54 manual-seat brief and the owner's co-op extension. Gameplay and built-in strategy are unchanged.
 
 ## Observation and response
 
@@ -155,7 +222,7 @@ cleanup, including programs that ignore SIGTERM. The operator remains responsibl
 own program starts. Match end and disposal terminate the child and cancel pending HTTP requests.
 
 A decision has one total budget across all batches: at most `timeoutMs`, further limited to half the remaining
-phase/offer time, reserving the rest for fallback. Untimed phases still use the adapter budget. Existing phase
+phase/offer time, reserving the rest for fallback. Untimed phases still use the adapter budget, except for the opt-in solo manual wait above. Existing phase
 timers stay armed. Requests are asynchronous; no scheduler callback waits on network or child IO. No AI request
 can extend a phase. A reply after a phase/turn change, seat elimination or manual takeover cannot mutate state.
 

@@ -4,6 +4,9 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createLLMAgent, STRATEGY_PROMPT, advisorSystem } from '../../tools/ai/llm-agent.mjs';
 import { knowledgePack } from '../../server/ai/knowledge.js';
 import { DATA } from './harness.js';
@@ -31,7 +34,7 @@ test('LLM adapter uses a stable cached system prefix, compact digest, JSON mode 
     let body = ''; req.on('data', b => { body += b; }); req.on('end', () => {
       calls.push({ path: req.url, auth: req.headers.authorization, body: JSON.parse(body) });
       res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"economy":{"maxRefreshes":2}}' } }],
-        usage: { prompt_tokens: 100, completion_tokens: 12, prompt_tokens_details: { cached_tokens: 80 } } }));
+        usage: { prompt_tokens: 100, completion_tokens: 12, prompt_tokens_details: { cached_tokens: 80 }, completion_tokens_details: { reasoning_tokens: 5 } } }));
     });
   });
   const agent = createLLMAgent(envFor(url));
@@ -72,6 +75,60 @@ test('LLM requires explicit endpoint/model/key and a known knowledge version', a
   assert.throws(() => createLLMAgent(envFor('https://user:secret@example.invalid')));
   const agent = createLLMAgent(envFor('http://127.0.0.1:1'));
   await assert.rejects(agent(observation), /knowledge/);
+});
+
+test('LLM thinking controls are explicit, validated and independent of the token cap', async () => {
+  for (const setting of [{}, { SP_LLM_THINKING: 'disabled' }, { SP_LLM_THINKING: 'enabled', SP_LLM_REASONING_EFFORT: 'low' }]) {
+    let sent;
+    const agent = createLLMAgent({ ...envFor('https://example.invalid'), ...setting }, async (_config, body) => {
+      sent = body;
+      return { choices: [{ finish_reason: 'stop', message: { content: '{}' } }] };
+    });
+    await agent(hello); await agent(observation);
+    assert.deepEqual(sent.thinking, setting.SP_LLM_THINKING ? { type: setting.SP_LLM_THINKING } : undefined);
+    assert.equal(sent.reasoning_effort, setting.SP_LLM_REASONING_EFFORT);
+    assert.equal(sent.max_tokens, 16000);
+  }
+  for (const setting of [{ SP_LLM_THINKING: 'off' }, { SP_LLM_THINKING: 'disabled', SP_LLM_REASONING_EFFORT: 'low' },
+    { SP_LLM_THINKING: 'disabled', SP_LLM_RETRY_EFFORT: 'minimal' }]) {
+    assert.throws(() => createLLMAgent({ ...envFor('https://example.invalid'), ...setting }), /LLM configuration/);
+  }
+});
+
+test('opt-in capture and full failure diagnostics redact credentials and keep reasoning usage off the wire', async t => {
+  const dir = mkdtempSync(join(tmpdir(), 'sp-llm-diagnostics-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const debug = join(dir, 'debug.jsonl'), capture = join(dir, 'capture.jsonl');
+  let sent;
+  const agent = createLLMAgent({ ...envFor('https://example.invalid'), SP_LLM_DEBUG_FILE: debug,
+    SP_LLM_CAPTURE_FILE: capture, SP_LLM_DEBUG_FULL_REPLY: '1' }, async (_config, body) => {
+    sent = body;
+    return { choices: [{ finish_reason: 'stop', message: { content: 'broken test-secret reply' } }],
+      usage: { prompt_tokens: 100, completion_tokens: 30, prompt_cache_hit_tokens: 80, completion_tokens_details: { reasoning_tokens: 20 } } };
+  });
+  await agent(hello);
+  await assert.rejects(agent({ ...observation, digest: { ...observation.digest, lp: 'test-secret' } }), /JSON/);
+  const log = JSON.parse(readFileSync(debug, 'utf8'));
+  assert.equal(log.content, 'broken [REDACTED] reply');
+  assert.equal(log.reasoningTokens, 20);
+  assert.deepEqual(log.usage, { inputTokens: 100, outputTokens: 30, cachedTokens: 80 });
+  assert.deepEqual(JSON.parse(readFileSync(capture, 'utf8')).body, JSON.parse(JSON.stringify(sent).replaceAll('test-secret', '[REDACTED]')));
+  for (const file of [debug, capture]) {
+    const text = readFileSync(file, 'utf8');
+    assert.ok(!text.includes('test-secret')); assert.ok(!text.includes('authorization')); assert.ok(!text.includes('example.invalid'));
+  }
+  const failed = createLLMAgent({ ...envFor('https://example.invalid'), SP_LLM_DEBUG_FILE: debug }, async () => {
+    throw new Error('remote echoed test-secret');
+  });
+  await failed(hello); await assert.rejects(failed(observation), /^Error: LLM request$/);
+  assert.ok(!readFileSync(debug, 'utf8').includes('test-secret'));
+});
+
+test('a token-limit reply cannot use missing-wrapper recovery even when its plan looks complete', async () => {
+  const agent = createLLMAgent(envFor('https://example.invalid'), async () => ({ choices: [{ finish_reason: 'length',
+    message: { content: '{"why":"Keep","plan":{"items":{"equip":[]}}' } }] }));
+  await agent(hello);
+  await assert.rejects(agent(observation), /incomplete/);
 });
 
 for (const [tool, mode, transport] of [['botbench', 'direct', 'stdio'], ['botbench', 'plan', 'http'], ['matchrun', 'plan', 'stdio']]) {

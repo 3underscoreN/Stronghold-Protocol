@@ -379,8 +379,8 @@ SP_LLM_BASE_URL=http://127.0.0.1:8000/v1 SP_LLM_MODEL=your-model \
 SP_LLM_API_KEY="$YOUR_KEY" npm start
 ```
 
-`SP_LLM_BASE_URL`, `SP_LLM_MODEL`, `SP_LLM_API_KEY` are required environment values; none are logged or
-journaled. `SP_LLM_TIMEOUT_MS` defaults to 20000 (1..300000). The adapter has no default provider or model.
+`SP_LLM_BASE_URL`, `SP_LLM_MODEL`, `SP_LLM_API_KEY` are required environment values; the endpoint and key are
+never logged or journaled. `SP_LLM_TIMEOUT_MS` defaults to 20000 (1..300000). The adapter has no default provider or model.
 `SP_LLM_MAX_TOKENS` caps one reply (default 16000, 256–32000; reasoning models spend completion tokens before the plan, so a small cap returns an empty reply); a reply cut off by that cap before any JSON is asked once more with a short "decide now, JSON only" turn while half of `SP_LLM_TIMEOUT_MS` remains (the limit covers both requests; history §35.63); `SP_LLM_REASONING_EFFORT` (minimal / low / medium / high) is sent as `reasoning_effort` when set, `SP_LLM_RETRY_EFFORT` (same values) only on that retry; 机变 / offer / reward calls get a choice-only task and may echo `choiceName`, which corrects a mismatched choice ID when it names exactly one other card; `SP_LLM_DEBUG_FILE` appends one line per request with the failing stage, the reply head and the accepted plan, never the key or request headers.
 It keeps eight knowledge versions in memory as stable system prompts, with an original general-principles
 strategy prompt, and sends only compact digest/choices/continuity per decision. Provider prompt caching can reuse that prefix;
@@ -392,6 +392,43 @@ schema adherence ([official OpenAI documentation](https://developers.openai.com/
 requests (four seats plus requests the host abandoned that are still finishing). Debug lines carry the provider's
 usage, so abandoned replies still show their tokens. Catalogue effect summaries retain at most 500 characters each. Tests use a loopback mock; no real API
 is used for repository validation.
+
+#### Thinking controls and JSON diagnostics (0.3.4, in development)
+
+`SP_LLM_THINKING=enabled|disabled` optionally sends `thinking:{type:...}`. Omitted means the provider's
+default, as before; the adapter does not infer a switch from the model name. `disabled` cannot be combined
+with either effort variable, since providers can give those conflicting switches different precedence.
+The 16000-token cap is independent of thinking effort. No faster setting is made the default until a
+same-observation quality replay and full ABYSS benchmark support it.
+
+DeepSeek's [thinking documentation](https://api-docs.deepseek.com/guides/thinking_mode/) and
+[Chat Completions reference](https://api-docs.deepseek.com/api/create-chat-completion/) checked on 2026-10-26
+map `minimal` to `low`, and `medium` to `high`; thinking defaults to enabled/high. The explicit non-thinking
+switch is `thinking:{type:"disabled"}`. These are provider facts, not portable promises for other services.
+The small round54 probe found lower latency with low effort, but non-thinking made worse spending choices;
+the real-state replay and complete A/B run were blocked by HTTP 402 (insufficient balance). See
+[the measurement and limitations](history/0.3.4.md#371-llm-latency-and-json-recovery-round54-in-development).
+
+Optional local diagnostics (never enabled by default):
+
+- `SP_LLM_DEBUG_FULL_REPLY=1`, together with `SP_LLM_DEBUG_FILE`, records the entire final failed
+  content, within the existing provider response size cap. It does not record reasoning text.
+- `SP_LLM_CAPTURE_FILE` records the exact provider request body, including messages, model and controls,
+  with match/player/request/round metadata. It includes private seat state and the knowledge prefix; store it
+  outside git. It never records transport configuration, endpoint, headers or credentials.
+- Debug usage includes optional top-level `reasoningTokens` when the provider reports it. `outputTokens`
+  already includes these tokens; do not add them again for cost. The wire `usage` schema is unchanged.
+  Cache hits accept both `prompt_tokens_details.cached_tokens` and DeepSeek's `prompt_cache_hit_tokens`.
+- Both local writers redact an exact credential echoed in model/game text; new files use mode 0600.
+  Transport exceptions remain generic even when an injected transport throws remote text.
+
+Round54 full replies reproduced a complete `plan.items.equip` array ending in `]}}`, missing only the final
+outer wrapper `}` despite `finish_reason:"stop"`. [ASSUMED] The parser may add that one brace only when
+the wrapper ends in `plan`, the plan ends in `items`, and items ends in `equip`; a successful JSON parse and
+the existing plan validation are still required. It records the syntax repair. Missing array elements,
+strings, fields, inner braces, arbitrary syntax errors and token-limit replies are not completed or guessed.
+This recovers both captured nonempty syntax failures; it cannot recover the captured empty reply, and it
+does not establish that all 35 head/tail-only cycle-3 failures had the same defect.
 
 ### Committed round plans and private reasoning (§35.11)
 
@@ -450,7 +487,7 @@ The model is asked for:
   actual stock and future rolls remain unknown. This cannot guarantee a threshold will be completed.
 - Local repairs drop unknown/wrong-kind IDs, duplicate/capped entries and stale choices; clamp finite numeric
   values to existing schema bounds (numeric strings/fractions normalize); normalize placement directions.
-  The resulting plan still passes the strict `validPlan`. Malformed structures, invalid JSON,
+  The resulting plan still passes the strict `validPlan`. Apart from the narrow 0.3.4 missing-wrapper recovery above, malformed structures, invalid JSON,
   incomplete replies and transport errors still fail and use the existing bounded fallback. Bare §35.9 plans
   remain accepted. No retry or extra provider request is introduced.
 
@@ -458,7 +495,7 @@ Set `SP_LLM_DEBUG_FILE` to a local NDJSON path to record match/player/request/ro
 accepted output plan, repairs (field and dropped ID/value, up to 128 details plus total count), stage and latency.
 The plan is the adapter's validated output; the next host observation confirms acceptance. Failure entries
 may include a short reply head. Keep this file private; it contains seat strategy and model text. API keys,
-headers and the knowledge prefix are not logged. `SP_LLM_REASONING_EFFORT` optionally passes
+headers and the knowledge prefix are not written to this debug file (the separate opt-in capture includes the prefix). `SP_LLM_REASONING_EFFORT` optionally passes
 `minimal|low|medium|high`; provider cache hits and latency improvements are not guaranteed.
 
 Offline evaluation: `test/fixtures/llm-advisor.json` is an authored recorded mock trace of the observed failure

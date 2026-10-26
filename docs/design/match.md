@@ -186,6 +186,12 @@ The complete policy and scope are in [External AI API](../EXTERNAL_AI.md).
 Maintainer decision 2026-10-23 (§35.66): a release package does not include this strategy. The zip, the update
 package and the Docker image omit the host, and a packaged server ignores external-AI settings.
 
+0.3.4 development adapter (§37.1): provider thinking mode is explicitly configurable, independent of the
+token cap. Opt-in local captures omit credentials/headers; debug usage may distinguish reasoning tokens.
+[ASSUMED] A normal-stop response with a complete final `plan.items.equip` and only its outer wrapper brace
+missing may recover that single brace before the unchanged validators. This changes neither match timers,
+the default provider controls, legacy behavior nor the release gate. See [adapter details](../EXTERNAL_AI.md).
+
 Maintainer request 2026-10-19 (§35.12): the example advisor's static knowledge includes a regenerable playbook
 from the active data and a sourced community overlay. [ASSUMED] Per-seat scoring uses only announced
 bans/enemies, public teammate boards and own progress. §35.15: the band draft returns at most eight

@@ -133,11 +133,26 @@ export function checkChoiceName(plan, name, choices, repairs) {
 }
 
 // Models sometimes wrap the JSON object in a code fence or a sentence despite response_format.
-export function parseReply(content) {
+export function parseReply(content, repairs = []) {
   try { return JSON.parse(content); } catch { /* fall through */ }
   const start = content.indexOf('{'), end = content.lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('JSON');
-  return JSON.parse(content.slice(start, end + 1));
+  const json = content.slice(start, end + 1);
+  try { return JSON.parse(json); } catch { /* check the observed missing-wrapper form only */ }
+  // Round54 captures: finish=stop, complete items.equip array and plan, but the outer wrapper lacks its final }.
+  // [ASSUMED] Recover exactly that one delimiter, never a cut-off string/array/field or arbitrary broken JSON.
+  // The caller rejects finish=length before parsing; the repaired plan still goes through the usual validators.
+  const suffix = content.slice(end + 1).trim();
+  if (json.endsWith(']}}') && (!suffix || suffix === '```')) {
+    const parsed = JSON.parse(`${json}}`);
+    if (typeof parsed.why === 'string' && Object.keys(parsed).at(-1) === 'plan'
+      && Object.keys(parsed.plan || {}).at(-1) === 'items'
+      && Object.keys(parsed.plan.items || {}).at(-1) === 'equip' && Array.isArray(parsed.plan.items.equip)) {
+      repairs.push({ path: '$', reason: 'closed missing outer object after items.equip' });
+      return parsed;
+    }
+  }
+  throw new Error('JSON');
 }
 
 // Injectable transport lets prompt/continuity tests run without opening sockets; the CLI keeps bounded HTTP.
@@ -156,16 +171,25 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
   if (!Number.isInteger(maxTokens) || maxTokens < 256 || maxTokens > 32000) throw new Error('LLM configuration');
   const effort = env.SP_LLM_REASONING_EFFORT, retryEffort = env.SP_LLM_RETRY_EFFORT;
   for (const e of [effort, retryEffort]) if (e && !['minimal', 'low', 'medium', 'high'].includes(e)) throw new Error('LLM configuration');
+  // DeepSeek's explicit switch; leave it absent for other providers and existing configurations.
+  const thinking = env.SP_LLM_THINKING;
+  if (thinking && !['enabled', 'disabled'].includes(thinking)) throw new Error('LLM configuration');
+  if (thinking === 'disabled' && (effort || retryEffort)) throw new Error('LLM configuration');
   const prompts = new Map();
   // [ASSUMED] At most 32 seat/match memories; explicit host match IDs prevent same-player cross-match reuse.
   const seats = new Map();
   // Optional per-request diagnostics for the operator (SP_LLM_DEBUG_FILE): the failing stage, the model's reply head
   // and the accepted plan. Never the key, the request headers or the knowledge prefix.
-  const debugFile = env.SP_LLM_DEBUG_FILE;
-  const note = entry => {
-    if (!debugFile) return;
-    try { appendFileSync(debugFile, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`); } catch { /* diagnostics only */ }
+  const debugFile = env.SP_LLM_DEBUG_FILE, captureFile = env.SP_LLM_CAPTURE_FILE;
+  const fullReply = env.SP_LLM_DEBUG_FULL_REPLY === '1';
+  const record = (file, entry) => {
+    if (!file) return;
+    // Even an echoed credential in untrusted model/game text must not reach these opt-in local files.
+    const secret = JSON.stringify(env.SP_LLM_API_KEY).slice(1, -1);
+    const line = JSON.stringify({ at: new Date().toISOString(), ...entry }).split(secret).join('[REDACTED]');
+    try { appendFileSync(file, `${line}\n`, { mode: 0o600 }); } catch { /* diagnostics only */ }
   };
+  const note = entry => record(debugFile, entry);
   return async o => {
     if (o.type === 'hello') {
       if (!o.knowledge?.version || o.knowledge.schema !== 'sp-knowledge/1') throw new Error('knowledge');
@@ -197,19 +221,25 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
     const question = choiceOnly ? { kind: o.context.kind, task: CHOICE_TASK, digest, choices }
       : { kind: o.context.kind, digest, continuity: history, strategy: shown, choices };
     const messages = [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(question) }];
-    const body = { model: env.SP_LLM_MODEL, response_format: { type: 'json_object' }, max_tokens: maxTokens, ...(effort ? { reasoning_effort: effort } : {}), messages };
+    const body = { model: env.SP_LLM_MODEL, response_format: { type: 'json_object' }, max_tokens: maxTokens,
+      ...(effort ? { reasoning_effort: effort } : {}), ...(thinking ? { thinking: { type: thinking } } : {}), messages };
     // Shared bounded transport rejects redirects, including credential forwarding; errors are intentionally generic.
     const started = Date.now();
     const ask = async b => {
+      // Exact provider messages/body, never the transport config, endpoint, token or headers.
+      record(captureFile, { ...info, body: b });
       try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
-      catch (err) { note({ ...info, stage: 'http', error: err?.message, usage: total, ms: Date.now() - started }); throw err; }
+      catch { note({ ...info, stage: 'http', error: 'request-failed', usage: total, reasoningTokens, ms: Date.now() - started }); throw new Error('LLM request'); }
     };
-    let total;
+    let total, reasoningTokens;
     const count = r => {
       const u = r.usage;
       if (!u) return;
       total ||= { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-      total.inputTokens += u.prompt_tokens || 0; total.outputTokens += u.completion_tokens || 0; total.cachedTokens += u.prompt_tokens_details?.cached_tokens || 0;
+      total.inputTokens += u.prompt_tokens || 0; total.outputTokens += u.completion_tokens || 0;
+      total.cachedTokens += u.prompt_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
+      const reasoning = u.completion_tokens_details?.reasoning_tokens;
+      if (Number.isInteger(reasoning) && reasoning >= 0) reasoningTokens = (reasoningTokens || 0) + reasoning;
     };
     let response = await ask(body);
     count(response);
@@ -219,17 +249,21 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
     // the 58 solo ones with no text at all), while at least half the HTTP limit remains. SP_LLM_RETRY_EFFORT optionally
     // asks for less reasoning on that retry (only for providers that honour reasoning_effort).
     if (finish === 'length' && Date.now() - started < timeoutMs / 2) {
-      note({ ...info, stage: 'retry', finish, chars: content.length, head: content.slice(0, 300), usage: total, ms: Date.now() - started });
+      note({ ...info, stage: 'retry', finish, chars: content.length, head: content.slice(0, 300), usage: total, reasoningTokens, ms: Date.now() - started });
       response = await ask({ ...body, ...(retryEffort ? { reasoning_effort: retryEffort } : {}), messages: [...messages, { role: 'user', content: RETRY_TEXT }] });
       count(response);
       content = String(response.choices?.[0]?.message?.content ?? '');
       finish = response.choices?.[0]?.finish_reason;
     }
     const usage = total;
+    const diagnostic = { ...info, usage, reasoningTokens, ms: Date.now() - started };
+    const failureText = { chars: content.length, head: content.slice(0, 300), tail: content.slice(-300),
+      ...(fullReply ? { content } : {}) };
     // Usage goes into every diagnostic line: a reply the host already abandoned still cost tokens.
-    if (finish !== 'stop') { note({ ...info, stage: 'incomplete', finish, chars: content.length, head: content.slice(0, 300), usage, ms: Date.now() - started }); throw new Error('incomplete'); }
+    if (finish !== 'stop') { note({ ...diagnostic, stage: 'incomplete', finish, ...failureText }); throw new Error('incomplete'); }
     let parsed;
-    try { parsed = parseReply(content); } catch { note({ ...info, stage: 'json', chars: content.length, head: content.slice(0, 300), tail: content.slice(-300), usage, ms: Date.now() - started }); throw new Error('JSON'); }
+    const syntaxRepairs = [];
+    try { parsed = parseReply(content, syntaxRepairs); } catch { note({ ...diagnostic, stage: 'json', ...failureText }); throw new Error('JSON'); }
     let plan, repairs, why, pivot;
     try {
       // Bare plans remain compatible with §35.9. Metadata never enters validPlan or the game's reply/journal.
@@ -238,17 +272,18 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
       why = shortText(wrapped ? parsed.why : '').match(/[^.!?。！？]+[.!?。！？]*/gu)?.slice(0, 3).join('').trim() || '';
       const holds = (strategy.candidates || []).map(c => c.shopHold).filter(Number.isInteger);
       ({ plan, repairs } = repairPlan(wrapped ? parsed.plan : parsed, pack, o.digest, choices, { holds }));
+      repairs.unshift(...syntaxRepairs);
       pivot = focusPlan(plan, { pivot: parsed?.pivot, pivotReason: shortText(parsed?.pivotReason, 160) }, digest, history?.previousPlan, repairs,
         (shown.candidates || []).map(c => c.main).filter(Boolean));
       checkChoiceName(plan, parsed?.choiceName, choices, repairs);
       if (!validPlan(plan)) throw new Error('plan');
     } catch {
-      note({ ...info, stage: 'plan', head: content.slice(0, 300), usage, ms: Date.now() - started }); throw new Error('plan');
+      note({ ...diagnostic, stage: 'plan', ...failureText }); throw new Error('plan');
     }
     if (o.context.kind === 'prep' && state.latest === o.id) state.pending = {
       id: o.id, round: digest.round, plan: structuredClone(plan), digest, through: o.digest.feedback?.through,
     };
-    note({ ...info, stage: 'ok', why, ...pivot, plan, repairs: repairs.slice(0, 128), repairCount: repairs.length, usage, ms: Date.now() - started });
+    note({ ...diagnostic, stage: 'ok', why, ...pivot, plan, repairs: repairs.slice(0, 128), repairCount: repairs.length });
     return { v: o.v, id: o.id, plan, ...(usage ? { usage } : {}) };
   };
 }

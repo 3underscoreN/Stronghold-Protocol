@@ -469,6 +469,9 @@ charId's forms, listing only the dubs this server has and offering a preview. An
 preference, then the own-language dub when the switch is on and the operator has one, then Chinese. A missing line
 falls back to the Chinese file of the same name. Changing the global language does not clear per-operator choices.
 
+The selected-piece underframe uses fixed viewport positioning, matching `tileScreen` client coordinates; screen-fit
+insets must not be added again by the HUD containing block (#889, [0.3.4](../history/0.3.4.md)).
+
 异形屏适配 (`ui/screenFit.js`) persists `sp.pref.screenFit` — four whole pixel offsets `{ l, r, t, b }` in ±100 (inward
 positive; the settings show each as a 0–100 slider, 50 = 0, 2 px a step) — on this device only. While any offset is
 non-zero, `<html data-fit>` with `--fit-l/r/t/b` makes `.app-root` and the full-page panels (统计数据, 干员调配, 玩法说明)

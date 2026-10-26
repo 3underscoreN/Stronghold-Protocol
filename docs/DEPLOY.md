@@ -369,6 +369,16 @@ volumes:
 
 ## 7. 打包发布（维护者）
 
+打包命令默认在生成 ZIP 后执行启动冒烟检查（#568）：完整包、精简包分别解压到临时目录；更新包在
+每个 `--from` 基础包的临时副本上覆盖。只用包内文件及运行依赖执行 `node server/index.js`，绑定
+本机随机空闲端口，依次验证 `/healthz` 的版本、首页及 `/vendor/pixi.min.js`。不下载素材、不跑对局、
+不加入系统 CI 矩阵。素材专用 ZIP 不含服务器，仍走素材包校验。
+失败使打包命令返回非零，错误标明解压／启动／具体请求阶段；日志保留为 ZIP 旁的 `.smoke.log`
+（更新包为 `.base-N.smoke.log`）。无论成功失败都关闭本次子进程并清理临时安装。
+可单独重查：`node tools/package-smoke.mjs <release.zip> [base.zip或目录]`。`--no-install` 也不跳过冒烟，
+因此缺少运行依赖的调试包会失败；`--dry-run` 不产生 ZIP，也不启动检查。
+
+
 Releases 的 zip（完整包、精简包，0.2.1 起还有更新包）由 `tools/package.mjs` 生成，在**源码仓库**里运行（整合包里没有这个工具）：
 
 ```bash

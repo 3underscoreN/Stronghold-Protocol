@@ -39,9 +39,14 @@ export function unitArt(m, info, appearance = {}) {
   if (!m || !id) return null;
   if (info.side === 'enemy' || String(id).startsWith('enemy_')) return enemyIconUrl(m, id);
   if (String(id).startsWith('token_')) {
-    // 召唤物皮肤 (docs/SKINS.md): the same switch as an operator's: another seat's outfit is hidden when off
+    // 召唤物皮肤 (docs/SKINS.md): the same switch as an operator's: another seat's outfit is hidden when off. With its
+    // owner's operator known (UnitInfo ownerCharId, #876) the summon follows that operator's CURRENT outfit like the Pixi
+    // board does — the spawn-time info.skin missed a change made during the battle (round-54 audit)
     const mine = info.ownerId == null || info.ownerId === appearance.myId;
-    return tokenAvatarUrl(m, id, { skin: mine || appearance.otherSkins !== false ? info.skin : null });
+    const skin = info.ownerCharId && info.ownerId != null
+      ? ownerSkin(info.ownerCharId, { ...appearance, ownerId: info.ownerId, skin: info.skin })
+      : (mine || appearance.otherSkins !== false ? info.skin : null);
+    return tokenAvatarUrl(m, id, { skin });
   }
   // Same golden rule as chessAvatarUrl: a character-key avatar uses avatarE2 on a golden piece.
   const charId = info.diy?.charId || info.spine || String(id).replace(/_[12]$/, '');

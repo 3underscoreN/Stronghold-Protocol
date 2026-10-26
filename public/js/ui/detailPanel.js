@@ -38,7 +38,7 @@ import { progressLabel } from '../itemProgress.js';
 import { BondTimers } from './bondTimers.js';
 import { useEffect } from '../../vendor/hooks.module.js';
 import { html, Icon, TierChip, MicroLabel, Button, confirmDialog, useTicker } from './components.js';
-import { OperatorImage, Img, RichText, UnitThumb, BondGlyph, GIcon, diyToken } from './gameComponents.js';
+import { OperatorImage, Img, RichText, UnitThumb, BondGlyph, GIcon, diyToken, TokenAvatar } from './gameComponents.js';
 import { attackInterval, rangeGridBox, fmtNum, tileKey, chessLoadout, nextThreshold, bondTier, briefingBondTip, pieceBondIds, grantedBonds, morphPairings, ownStandIn, standInOf, standInLoadout, standInLabel, standInTip, standInForText, ownDiyRecord, ownDiyPick, diyRecordFor, pickGetter, unitPick, unitCultivation } from './gameLogic.js';
 import { skillIconUrl, skillRecordIconUrl, profIconUrl, subProfIconUrl, itemIconUrl, enemyIconUrl, tokenAvatarUrl, factionIconUrl, uiUrl, moduleTypeIconUrl } from './assetUrls.js';
 import { abilityRows } from './abilityLines.js';
@@ -658,7 +658,7 @@ function MapCharDetail({ token, snapHp, live, m }) {
     <//>` : null}`;
 }
 
-export function TokenDetail({ token, piece, ownerId = null, snapHp = null, live = null }) {
+export function TokenDetail({ token, piece, ownerId = null, skin = null, snapHp = null, live = null }) {
   const m = data.get('assets');
   // a band map character (外勤医疗's Touch / 预备干员-医疗, tokens.json kind 'mapChar') is an operator of the mode, not a
   // summon: no owner variants — its stats, skill, talents and 特性 are on the record (GitHub #260, PR #278)
@@ -677,7 +677,7 @@ export function TokenDetail({ token, piece, ownerId = null, snapHp = null, live 
   const hint = piece ? summonDeployHint(token) : null;
   return html`
     <div class="dhead dhead--item">
-      <div class="dhead__icon"><${Img} src=${tokenAvatarUrl(m, token.tokenId)} fallback=${html`<${GIcon} name="target" />`} /></div>
+      <div class="dhead__icon"><${TokenAvatar} m=${m} tokenId=${token.tokenId} ownerId=${ownerId} skin=${skin} fallback=${html`<${GIcon} name="target" />`} /></div>
       <div class="dhead__info">
         <div class="dhead__chips"><span class="dtag-token">${t('召唤物')}</span>${piece?.count > 1 ? html`<span class="dtag-kind num">×${piece.count}</span>` : null}</div>
         <h3 class="dhead__name">${token.name}</h3>
@@ -778,7 +778,7 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     if (!e) return null;
     const p = e.piece;
     if (p.kind === 'item') { const it = data.lookup('items', p.id); return it ? { type: 'item', item: it, piece: p } : null; }
-    if (p.kind === 'token') { const t = data.lookup('tokens', p.id) || diyToken(p.id); return t ? { type: 'token', token: t, piece: p, ownerId: tokenOwnerId(p, pieces) } : null; }
+    if (p.kind === 'token') { const t = data.lookup('tokens', p.id) || diyToken(p.id); return t ? { type: 'token', token: t, piece: p, ownerId: tokenOwnerId(p, pieces), skin: p.skin || null } : null; }
     const c = data.lookup('chess', p.id);
     const d = ownDiy(c);
     if (d) return { type: 'chess', ...appearance, chess: d.chess, piece: p, standIn: null, diy: d.diy };
@@ -829,7 +829,7 @@ export function resolveDetail(target, pieces, { priv = null, backups = data.get(
     if (dr) return { type: 'chess', ...appearance, chess: dr, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: null, diy: pick, ...cv };
     if (c) return { type: 'chess', ...appearance, chess: c, piece: own?.piece || null, unitId: u.id, unitItems: Array.isArray(u.items) ? u.items : null, standIn: si, ...cv };
     const t = data.lookup('tokens', u.defId) || diyToken(u.defId);
-    if (t) return { type: 'token', token: t, unitId: u.id, ownerId: tokenOwnerId(own?.piece, pieces) };
+    if (t) return { type: 'token', token: t, unitId: u.id, ownerId: u.ownerId ?? tokenOwnerId(own?.piece, pieces), skin: u.skin || null };
     const en = data.lookup('enemies', u.defId);
     return en ? { type: 'enemy', enemy: en, unitId: u.id } : null;
   }
@@ -902,7 +902,7 @@ export function DetailPanel({ detail, editable, snapHp, onClose, onSell, onDestr
         standIn=${detail.standIn || null} diy=${detail.diy || null} cultOpts=${detail.cultOpts || { ops }} morphMode=${morphMode} onUnequip=${onUnequip} />` : null}
       ${detail.type === 'item' ? html`<${ItemDetail} item=${detail.item} progress=${detail.progress || detail.piece?.progress} piece=${detail.piece} editable=${editable} onDestroy=${destroyIt} offBonds=${offBonds} morphMode=${morphMode} unequipAllowed=${unequipAllowed} />` : null}
       ${detail.type === 'enemy' ? html`<${EnemyDetail} enemy=${detail.enemy} snapHp=${snapHp} count=${detail.count} live=${liveNow} />` : null}
-      ${detail.type === 'token' ? html`<${TokenDetail} token=${detail.token} piece=${detail.piece} ownerId=${detail.ownerId ?? null} snapHp=${snapHp} live=${liveNow} />` : null}
+      ${detail.type === 'token' ? html`<${TokenDetail} token=${detail.token} piece=${detail.piece} ownerId=${detail.ownerId ?? null} skin=${detail.skin ?? null} snapHp=${snapHp} live=${liveNow} />` : null}
       ${detail.type === 'terrain' ? html`<${TerrainDetail} terrain=${detail.terrain} />` : null}
       ${detail.type === 'device' ? html`<${DeviceDetail} device=${detail.device} snapHp=${snapHp} live=${liveNow} />` : null}
     </div>

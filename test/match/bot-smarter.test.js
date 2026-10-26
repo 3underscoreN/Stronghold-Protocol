@@ -49,6 +49,28 @@ test('#514: a living teammate soft-reserves an opening bond, and elimination rel
   } finally { m.dispose(); }
 });
 
+test('co-op focus: a changed public main releases the cached plan within the same prep', () => {
+  const { m } = makeMatch({ humans: 2, difficulty: 'HARD', seed: 11 }).start().toPrep();
+  const [ps, mate] = m.order;
+  try {
+    ps.bandId = mate.bandId = null;
+    mate.bonds = {};
+    const member = bond => Object.values(DATA.chess).find(c => c.visible && !c.isGolden && c.tier <= 3
+      && c.bonds.includes(bond) && c.bonds.filter(b => m.gd.bond(b)?.isCore).length === 1);
+    const cores = m.gd.bondIds.filter(id => m.gd.bond(id)?.isCore && !m.gd.modeInactiveBonds.has(id) && member(id)).slice(0, 2);
+    assert.equal(cores.length, 2);
+    for (const id of cores) give(m, ps, member(id).chessId);
+    const first = bondPlan(m, ps);
+    const other = cores.find(id => id !== first.focus);
+    mate.bonds = { [first.focus]: { count: 3 } };
+    const next = bondPlan(m, ps);
+    assert.equal(next.focus, other, 'a viable unclaimed core beats a small prior commitment');
+    assert.notEqual(next.key, first.key, 'public claims participate in the cache identity');
+    mate.alive = false;
+    assert.notEqual(bondPlan(m, ps).key, next.key, 'eliminated teammates release their claims');
+  } finally { m.dispose(); }
+});
+
 test('#514: strategy selection stays possible, and less likely, while a teammate holds that opening', () => {
   const { m } = makeMatch({ humans: 2, difficulty: 'HARD', seed: 3 }).start().toPrep();
   const [human, bot] = m.order;

@@ -316,7 +316,9 @@ minus the bonds the bot's own opening strategy needs: 18 points for tiers V/VI (
 teammates do not stack it; it neither reserves stock nor outweighs an own merge or a missing blocker / healer.
 Existing strategy presets and rehearsal counts are unchanged.
 A living teammate's selected strategy also soft-reserves its bonds for bot strategy selection and focus planning
-before any member is deployed (§30.28). The reservation ends when that teammate is eliminated. It does not hard-exclude
+before any member is deployed (§30.28). The reservation ends when that teammate is eliminated. [ASSUMED] Focus planning subtracts 30 for the union of
+public main-core and opening claims, excluding the bot's own opening bonds; changing that union invalidates the cached
+plan even within a prep (§37.15). An accepted advisor main still takes precedence. It does not hard-exclude
 a strategy, reserve stock, or stop an immediate merge. A reserved strategy keeps a quarter of its unreserved draw
 weight (`SOFT_BAND_RESERVE` = 0.25), so it can still be chosen. Mode-inactive bonds stay weight 0 (DESIGN §21.26).
 A strategy whose mechanic also changes the teammates' enemies (鸭爵 「神秘顾客」: from round 5 some enemies of the player

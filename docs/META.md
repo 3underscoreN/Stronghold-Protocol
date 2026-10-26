@@ -267,9 +267,11 @@ Buys toward a full board first (the cap is 8 from R1; leftover funds are lost), 
 then levels on a curve (L2 ≈ R3, L3 ≈ R5, L4 ≈ R7, L5 ≈ R10, L6 ≈ R12 — the competent curve of docs/BALANCE.md; free
 levels always), then spends the rest (a band that keeps its leftover funds — 坎诺特 利滚利 — holds its interest capital
 of 5 back from refreshes, full-board buys that complete nothing, items and spare level-ups). It builds around a
-**focus core bond** (owned members × 10 + members the shop can still bring at its level + banked layers + 6 for last
-round's focus, − 6 when it is a teammate's main core bond on that teammate's bond strip — humans included: the pool is
-shared) and a **second bond** (most owned members, next threshold within reach); its keepers are the deployed
+**focus core bond** (owned members × 10 + reachable members capped at 4 + banked layers / 10 capped at 6; last
+focus adds 16 with at least 3 owned members, otherwise 6). [ASSUMED] A living teammate's public main core or opening
+strategy bond subtracts 30, except bonds required by the bot's own opening strategy; human and AI teammates count
+equally. Public claims participate in the per-prep cache and end on elimination (§37.15). It also picks a
+**second bond** (most owned members, next threshold within reach); its keepers are the deployed
 operators, the focus / second members and chess of tier ≥ shop level − 1. With a full board a purchase must be merge
 progress or a lineup upgrade **and** be worth more than the refreshes its price would pay for: a refresh is worth
 Σ over the held pairs of P(the refresh shows the third copy) × the value of an elite (the shop's copy-weighted odds

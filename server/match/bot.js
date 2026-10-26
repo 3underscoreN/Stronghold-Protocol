@@ -424,30 +424,25 @@ function teammateBonds(m, ps) {
 }
 
 /**
- * The bonds the bot builds around (cached per round and owned set): `focus` = the core bond with the best
- * owned members × 10 + reachable members (bondPoolStats, ≤ 4) + layers already banked (≤ 6) + 6 for last round's focus
- * (commit instead of flip-flopping between equal bonds) − 6 when a teammate already builds it (its main core bond on
- * its public bond strip, mainCoreBond — the shop pool is shared) or has selected that bond's opening strategy, even
- * before anyone is deployed. The strategy reservation ends when that teammate is eliminated. `second` = the other live
+ * The bonds the bot builds around (cached per round, owned set and public teammate claims): `focus` = the core bond with the best
+ * owned members × 10 + reachable members (bondPoolStats, ≤ 4) + layers already banked (≤ 6) + commitment (16 with
+ * ≥ 3 members, else 6). [ASSUMED] Subtract 30 for a living teammate's public main or opening strategy bond, except
+ * bonds required by the own opening strategy (teammateBonds). Claims end on elimination and invalidate the cache
+ * when they change within a prep. `second` = the other live
  * bond (core or add-on) with the most owned members whose next threshold is within reach (≥ 1 owned member).
  * `ps._botFocusId` keeps the focus across rounds. §35.62: an accepted advisor plan's primary core bond (its highest
  * priority) is the focus, owned members or not: the plan's direction leads legacy's procurement instead of competing with
  * it at +6..+30 per member.
  */
 export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
-  const livingBands = m.alivePlayers().filter((p) => p !== ps).flatMap((p) => m.gd.bandBondIds(p.bandId)).sort().join();
+  const mates = teammateBonds(m, ps);
+  // [ASSUMED] Reconsider the focus when a teammate's public main changes, including within the same prep.
+  const reservations = [...mates].sort().join();
   const planMain = (advisorPlan(m, ps)?.bonds || []).slice().sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
     .map((b) => b.id).find((id) => m.gd.bond(id)?.isCore && !m.gd.modeInactiveBonds.has(id)) ?? null;
-  const key = `${m.round}|${ps.shop.level}|${[...owned.counts.entries()].map(([k, v]) => k + v).join()}|${livingBands}|${planMain}`;
+  const key = `${m.round}|${ps.shop.level}|${[...owned.counts.entries()].map(([k, v]) => k + v).join()}|${reservations}|${planMain}`;
   if (ps._botFocus && ps._botFocus.key === key) return ps._botFocus;
   const prev = ps._botFocusId ?? null;
-  const mates = new Set();
-  for (const p of m.alivePlayers()) {
-    if (p === ps) continue;
-    const b = mainCoreBond(m, p);
-    if (b) mates.add(b);
-    for (const id of m.gd.bandBondIds(p.bandId)) mates.add(id);
-  }
   let focus = null;
   let bestS = 0;
   const pool = bondPoolStats(m, ps, owned);
@@ -457,7 +452,8 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
     const k = owned.counts.get(id) || 0;
     if (!k) continue;
     const s = k * 10 + Math.min(4, pool.reach.get(id) || 0) + Math.min(6, (ps.layers[id] || 0) / 10)
-      + (id === prev ? (k >= 3 ? CORE_LOCK : 6) : 0) - (mates.has(id) ? 6 : 0) + Math.min(0.9, (pool.supply.get(id) || 0) / 100);
+      // [ASSUMED] A public teammate claim outweighs commitment plus one member, but not an established large core.
+      + (id === prev ? (k >= 3 ? CORE_LOCK : 6) : 0) - (mates.has(id) ? 30 : 0) + Math.min(0.9, (pool.supply.get(id) || 0) / 100);
     if (s > bestS) { bestS = s; focus = id; }
   }
   if (planMain) focus = planMain;

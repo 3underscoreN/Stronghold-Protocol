@@ -379,11 +379,16 @@ registries; it rejects duplicate IDs and malformed hooks instead of altering oth
 An unset or empty `SP_BOT_STRATEGY` uses the original bot when no explicit option is supplied. `startServer()` validates the environment
 selection before data loading or listening; an invalid ID prevents startup with a diagnostic naming the variable,
 rejected value, available IDs and how to unset it to restore the default.
-The test input journal stores the resolved `botStrategy` ID. Replay uses the recorded ID (older records: `legacy`),
+`SP_BOT_STRATEGY_SEATS` / `opts.botStrategySeats` (`seat:id,…`, seats 0–3, registered IDs) override single seats;
+`Match.botFor(ps)` returns the seat's override, else the match's strategy, for an AI seat and a human under AI
+takeover alike. `startServer()` validates the variable the same way. An external default or seat creates one
+external host; only external seats ask it, still narrowed by `SP_EXTERNAL_AI_SEATS` (#816 P1).
+The test input journal stores the resolved `botStrategy` ID and, with overrides, `botStrategySeats` (seat → ID).
+Replay uses the recorded IDs (older records: `legacy`, no overrides),
 never the replay host's environment, and preserves `testSlice` counts for prep generators and rehearsal jobs.
 Band draft order is unchanged; selecting an AI implementation grants no seat priority.
 
-Band/common-card/private-bounty picks and both sliced prep stages use the selected object. Prep retains its existing
+Band/common-card/private-bounty picks and both sliced prep stages use the seat's selected object. Prep retains its existing
 iterator, rehearsal/delegation and deadline protocol. A custom hook failing before it creates an iterator still
 enters cleanup. `tools/matchrun.mjs --bot ID` and `tools/botbench.mjs --bot ID` select registered implementations
 explicitly; botbench records the ID and calls its bounty estimator. Its solo band override leaves the real band
@@ -1003,7 +1008,8 @@ round was over. The official 1 s `broadcastBeginDelay` is not modelled.
 
 ## 6. Testing & tools
 
-`opts.botStrategy` / `SP_BOT_STRATEGY` select the registered AI per match, default `legacy`.
+`opts.botStrategy` / `SP_BOT_STRATEGY` select the registered AI per match, default `legacy`;
+`opts.botStrategySeats` / `SP_BOT_STRATEGY_SEATS` override single seats.
 `ioleta` supplies Russell procurement through the shared prep pipeline; its state is
 `player.botStrategyState.ioleta.plan`. The HTTP server rejects unknown environment IDs at startup.
 Journal replay persists the registered ID and reconstructs the plan through deterministic prep inputs.

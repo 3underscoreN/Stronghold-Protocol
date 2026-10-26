@@ -35,9 +35,10 @@ export function aiDigest(m, ps, kind, pub, own, pack = null) {
   const withBounty = card => {
     if (!card || card.kind !== 'bounty') return card;
     let killChance;
-    if (typeof m.bot?.bountyKillChance === 'function') {
+    const bot = m.botFor(ps);
+    if (typeof bot?.bountyKillChance === 'function') {
       try {
-        const p = m.bot.bountyKillChance(m, ps, card);
+        const p = bot.bountyKillChance(m, ps, card);
         if (typeof p === 'number' && Number.isFinite(p)) killChance = p;
       } catch { /* a broken estimator must not drop the observation */ }
     }

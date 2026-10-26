@@ -39,6 +39,17 @@ test('selected operator frame follows its tile through screen offsets, UI size a
         }, piece);
         assert.ok(delta.every((d) => Math.abs(d) < 1), `${renderer} ${JSON.stringify(fit)}: ${delta}`);
       }
+      // a notched phone / PWA: the HUD sits inside the safe area, the fixed frame must still sit on its tile (round-54 audit)
+      await page.evaluate(() => { for (const [k, v] of [['--sa-l', '34px'], ['--sa-t', '22px'], ['--sa-r', '12px'], ['--sa-b', '16px']]) document.documentElement.style.setProperty(k, v); });
+      await cameraSettled(page);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 350)));
+      const notched = await page.evaluate((p) => {
+        const tile = globalThis.__SP_VIEW__.raw.tileScreen(p.row, p.col);
+        const frame = document.querySelector('.uframe').getBoundingClientRect();
+        return [frame.x + frame.width / 2 - tile.x, frame.y + frame.height / 2 - tile.y];
+      }, piece);
+      assert.ok(notched.every((d) => Math.abs(d) < 1), `${renderer} safe-area insets: ${notched}`);
+      await page.evaluate(() => { for (const k of ['--sa-l', '--sa-t', '--sa-r', '--sa-b']) document.documentElement.style.removeProperty(k); });
       await page.setViewport({ width: 844, height: 390 });
       await cameraSettled(page);
       // The fixed overlay must retain the functional button hit areas too.

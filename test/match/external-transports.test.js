@@ -4,7 +4,7 @@ import http from 'node:http';
 import { once } from 'node:events';
 import { setTimeout as delay } from 'node:timers/promises';
 import { externalConfig } from '../../server/match/externalConfig.js';
-import { httpDecision, retryAfterMs, StdioAI } from '../../server/ai/transport.js';
+import { httpDecision, retryAfterMs, safeHeaders, StdioAI } from '../../server/ai/transport.js';
 import { exampleServer } from '../../tools/ai/http.mjs';
 
 const observation = { v: 'sp-ai/1', id: 'test', public: {}, private: { canReady: true }, context: { kind: 'prep' }, results: [] };
@@ -16,6 +16,43 @@ async function serve(t, server) {
 }
 const request = (c, o = observation) => httpDecision(c, o, new AbortController().signal);
 const stdioConfig = command => externalConfig({ transport: 'stdio', command, timeoutMs: 1500, backoffMs: 20 });
+
+test('safe headers reject credentials, content and connection controls with generic strict errors', () => {
+  assert.deepEqual(safeHeaders({ 'HTTP-Referer': 'https://example.invalid/', 'X-Title': 'App' }, { strict: true }),
+    { 'http-referer': 'https://example.invalid/', 'x-title': 'App' });
+  const bad = [null, [], 'x', 1, { 'X-Test': 'a', 'x-test': 'b' },
+    ...['Authorization', 'Proxy-Authorization', 'x-api-key', 'Content-Type', 'content-length', 'content-encoding',
+      'Host', 'Cookie', 'cookie2', 'set-cookie', 'Transfer-Encoding', 'Connection', 'Trailer', 'TE', 'Upgrade',
+      'bad name', 'x-\r\n-test', 'x'.repeat(65)].map(k => ({ [k]: 'private-value' })),
+    ...['', 'x\r\nAuthorization: private-value', 'x\0', 'x\x7f', '中文', 'x'.repeat(257), 7, true, ['x'], {}].map(v => ({ 'x-test': v })),
+  ];
+  for (const headers of bad) {
+    assert.throws(() => safeHeaders(headers, { strict: true }), /^Error: headers$/);
+    assert.doesNotThrow(() => safeHeaders(headers));
+  }
+});
+
+test('HTTP credentials cannot be overridden by extra headers in either authentication mode', async t => {
+  const seen = [];
+  const url = await serve(t, http.createServer((req, res) => {
+    seen.push(req.headers); req.resume(); req.on('end', () => res.end('{}'));
+  }));
+  const config = { ...externalConfig({ transport: 'http', url }), token: 'private-token', headers: {
+    Authorization: 'wrong', 'X-API-Key': 'wrong', Host: 'wrong', Cookie: 'wrong', 'Content-Type': 'wrong',
+    'Content-Length': '999999', 'Transfer-Encoding': 'chunked', 'X-Title': 'App',
+  } };
+  for (const authType of ['bearer', 'x-api-key']) await request({ ...config, authType });
+  assert.equal(seen[0].authorization, 'Bearer private-token'); assert.equal(seen[0]['x-api-key'], undefined);
+  assert.equal(seen[1]['x-api-key'], 'private-token'); assert.equal(seen[1].authorization, undefined);
+  for (const headers of seen) {
+    assert.equal(headers.host, new URL(url).host); assert.equal(headers.cookie, undefined);
+    assert.equal(headers['content-type'], 'application/json');
+    assert.equal(headers['content-length'], String(Buffer.byteLength(JSON.stringify(observation))));
+    assert.equal(headers['transfer-encoding'], undefined); assert.equal(headers['x-title'], 'App');
+  }
+  await assert.rejects(request({ ...config, authType: 'wrong' }), /^Error: auth-type$/);
+  assert.equal(seen.length, 2);
+});
 
 test('external configuration is explicit, bounded, credential-safe and environment-selectable', () => {
   assert.throws(() => externalConfig(undefined, {}), /TRANSPORT/);

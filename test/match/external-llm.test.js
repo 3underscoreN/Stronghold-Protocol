@@ -26,6 +26,28 @@ const observation = { v: 'sp-ai/1', id: 'ai-1', knowledgeVersion: pack.version, 
   context: { mode: 'plan', kind: 'prep', matchId: 'mock-match' }, digest: { playerId: 'one', economy: { gold: 6 }, geometry: { omitted: true },
     actions: [{ id: 'a1', intent: { t: 'g.move' } }, { id: 'a2', intent: { t: 'g.reward' } }] } };
 
+test('SP_LLM_HEADERS validates JSON before IO and forwards only safe OpenAI headers', async t => {
+  const seen = [];
+  const url = await mock(t, (req, res) => {
+    seen.push(req.headers); req.resume(); req.on('end', () => res.end(JSON.stringify({
+      choices: [{ finish_reason: 'stop', message: { content: '{}' } }],
+    })));
+  });
+  for (const value of ['{', 'null', '[]', '"secret"', '5', '{"Authorization":"test-secret"}',
+    '{"X-API-Key":"test-secret"}', '{"Host":"test-secret"}', '{"Cookie":"test-secret"}',
+    '{"Content-Type":"test-secret"}', '{"content-encoding":"gzip"}', '{"x-test":7}',
+    '{"x-test":"bad\\nvalue"}', '{"X-Test":"a","x-test":"b"}']) {
+    assert.throws(() => createLLMAgent({ ...envFor(url), SP_LLM_HEADERS: value }), /^Error: LLM configuration$/);
+  }
+  const agent = createLLMAgent({ ...envFor(url),
+    SP_LLM_HEADERS: '{"HTTP-Referer":"https://example.invalid/","X-Title":"My app","User-Agent":"ignored"}' });
+  await agent(hello); assert.equal(seen.length, 0);
+  await agent(observation);
+  assert.equal(seen[0]['http-referer'], 'https://example.invalid/');
+  assert.equal(seen[0]['x-title'], 'My app'); assert.equal(seen[0]['user-agent'], 'stronghold-protocol-llm-agent');
+  assert.equal(seen[0].authorization, 'Bearer test-secret');
+});
+
 test('LLM retries 429/503 with bounded Retry-After or 10 seconds and private diagnostics', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'sp-llm-backoff-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

@@ -388,13 +388,92 @@ never logged or journaled. `SP_LLM_TIMEOUT_MS` defaults to 20000 (1..300000). Th
 It keeps eight knowledge versions in memory as stable system prompts, with an original general-principles
 strategy prompt, and sends only compact digest/choices/continuity per decision. Provider prompt caching can reuse that prefix;
 it is provider-dependent and still requires sending the prefix with the compatible stateless chat API.
-It POSTs `/chat/completions`, uses `response_format:{type:'json_object'}`, validates the parsed plan locally,
+By default it POSTs `/chat/completions`, uses `response_format:{type:'json_object'}`, validates the parsed plan locally,
 rejects truncation/redirects/oversized output, and forwards numeric usage only. JSON mode does not guarantee
 schema adherence ([official OpenAI documentation](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=chat)).
 [ASSUMED] Example limits: 16000 output tokens (`SP_LLM_MAX_TOKENS`, 256–32000), 256 KiB provider replies, 2 MiB input frames and 16 concurrent
 requests (four seats plus requests the host abandoned that are still finishing). Debug lines carry the provider's
 usage, so abandoned replies still show their tokens. Catalogue effect summaries retain at most 500 characters each. Tests use a loopback mock; no real API
 is used for repository validation.
+
+#### Anthropic Messages and extra headers (§37.25, in development)
+
+`SP_LLM_API_FORMAT=openai|anthropic` selects the wire format; omitted means `openai` and preserves the existing
+request. `anthropic` appends `/messages` to `SP_LLM_BASE_URL` (include the provider's `/v1`, omit `/messages`).
+It sends `model`, `max_tokens`, a top-level text `system` block, and user `messages`; it does not send OpenAI's
+`response_format` or a system-role message. Requests include `anthropic-version: 2023-06-01`.
+`SP_LLM_AUTH_TYPE=bearer|x-api-key` chooses exactly one credential header, using `SP_LLM_API_KEY` in either case.
+Bearer is the default for both formats, matching [OpenCode's documented authentication](https://dev.opencode.ai/v2/docs/console/api/inference).
+Direct Anthropic uses `x-api-key`; selecting a format never guesses authentication from a hostname.
+
+The stable system block includes `cache_control:{type:"ephemeral"}` by default. Set `SP_LLM_CACHE_SYSTEM=0`
+to omit it for an Anthropic-compatible gateway without prompt caching (`1` restores it; OpenAI is unaffected).
+Actual cache hits depend on the provider, model, minimum prefix length and expiry; they are not guaranteed.
+See [Anthropic prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+Only response `text` blocks are joined into the existing JSON/brace-recovery/choice-check/plan-validation path;
+thinking and redacted-thinking blocks are neither parsed nor logged. `end_turn` is a completed reply;
+`max_tokens` uses the existing one-follow-up budget, while other stop reasons fail closed.
+Both formats share the same response cap, deadline, rate-limit retries and redirect refusal.
+
+Anthropic `inputTokens` is `input_tokens + cache_read_input_tokens + cache_creation_input_tokens`;
+`outputTokens` is `output_tokens`, and `cachedTokens` is the cache-read count. Cache writes are already included
+in input, not counted as hits. Optional debug `cacheWriteTokens` reports writes separately; the host's three-field
+usage schema stays unchanged. Retry usage is accumulated once per response, without adding the 5-minute/1-hour
+cache-write breakdown again. Missing usage remains unknown; reasoning, when reported, is part of output.
+
+Anthropic controls (model support is provider-specific; omitted controls remain omitted):
+
+| Setting | Anthropic request |
+|---|---|
+| `SP_LLM_THINKING=disabled` | `thinking:{type:"disabled"}`; cannot combine with either effort variable |
+| `SP_LLM_THINKING=enabled` | `thinking:{type:"adaptive"}` |
+| `SP_LLM_REASONING_EFFORT=low|medium|high` | `output_config:{effort:...}` |
+| `SP_LLM_REASONING_EFFORT=minimal` | `output_config:{effort:"low"}` ([ASSUMED] compatibility mapping) |
+| `SP_LLM_REASONING_EFFORT=adaptive` | Existing per-observation budget policy selects `low` or omits effort; this is distinct from `thinking.type` |
+| `SP_LLM_RETRY_EFFORT` | Same fixed-effort mapping, only for the token-limit follow-up |
+| `SP_LLM_THINKING_BUDGET=N` with `SP_LLM_THINKING=enabled` | Legacy `thinking:{type:"enabled",budget_tokens:N}`; integer `1024 ≤ N < SP_LLM_MAX_TOKENS`, Anthropic only, incompatible with either effort variable |
+
+[Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview) supports adaptive thinking.
+The [legacy manual budget](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) is for models
+that support it, not Haiku 5.5; the adapter does not infer capabilities or silently change controls after an error.
+
+`SP_LLM_HEADERS` is an optional JSON object of extra request headers, for example:
+
+```sh
+export SP_LLM_HEADERS='{"HTTP-Referer":"https://example.org/","X-Title":"Stronghold local experiment"}'
+```
+
+It uses the transport's `safeHeaders` rules in strict mode: invalid JSON/objects, duplicate names ignoring case,
+non-string/empty values, control characters, names outside `[a-z0-9-]` (case-insensitive, 1–64 characters), and
+values over 256 characters or outside printable HTTP Latin-1 are rejected with a generic configuration error
+before IO. Authorization (including `proxy-authorization` and `x-api-key`), `content-*`, `host`, cookies and
+connection/framing controls are forbidden. The transport also filters unsafe caller headers defensively.
+The adapter's user agent, generated session ID and Anthropic version take precedence over extra headers.
+Headers never enter capture/debug records; use the dedicated credential setting for authentication.
+
+#### Provider presets (configuration examples, not live compatibility measurements)
+
+Set the common stdio/plan settings above, then choose one row. Load credentials into the environment securely.
+The base URLs exclude the final method path. Clear provider-specific thinking/effort/extra-header settings when
+switching providers; supported models, JSON mode and context limits vary.
+
+| Provider | `SP_LLM_API_FORMAT` | `SP_LLM_BASE_URL` | Model / additional settings |
+|---|---|---|---|
+| [DeepSeek](https://api-docs.deepseek.com/quick_start/agent_integrations/) | `openai` | `https://api.deepseek.com` | `SP_LLM_MODEL=deepseek-flash`; Bearer |
+| [OpenCode Go](https://opencode.ai/docs/go/), Chat Completions | `openai` | `https://opencode.ai/inference/go/openai/v1` | `SP_LLM_MODEL=deepseek-v4.1-flash`; Bearer; `SP_LLM_SESSION_HEADER=x-opencode-session` |
+| OpenCode Go, Messages | `anthropic` | `https://opencode.ai/inference/go/anthropic/v1` | `SP_LLM_MODEL=claude-haiku-5-5`; Bearer; same session header |
+| Direct Anthropic | `anthropic` | `https://api.anthropic.com/v1` | Available Claude model; `SP_LLM_AUTH_TYPE=x-api-key` |
+| [OpenRouter](https://openrouter.ai/docs/quickstart) | `openai` | `https://openrouter.ai/api/v1` | Available `provider/model` slug; Bearer; optional attribution via `SP_LLM_HEADERS` |
+| [Local Ollama](https://github.com/ollama/ollama/blob/main/docs/api/introduction.mdx) | `openai` | `http://127.0.0.1:11434/v1` | Installed local model; `SP_LLM_API_KEY=local-unused` if authentication is disabled |
+| [Local vLLM](https://github.com/vllm-project/vllm/blob/main/docs/serving/online_serving/openai_compatible_server.md) | `openai` | `http://127.0.0.1:8000/v1` | Served model name with chat template; configured server key, or `local-unused` if authentication is disabled |
+
+`SP_LLM_AUTH_TYPE=bearer` is implicit except in the direct Anthropic row. Local servers still need a nonempty
+adapter key setting; the placeholder is only for a server that does not require authentication. OpenRouter's
+current attribution example uses `HTTP-Referer` and `X-OpenRouter-Title`; the generic header option also accepts
+`X-Title`. No subscription entitlement is implied by these presets: some subscriptions restrict use to their own
+tools. Check the plan's terms and permitted traffic; identify this adapter honestly rather than impersonating
+an approved client. OpenCode Go describes coding-agent traffic, an own user agent, and a stable conversation ID.
+The owner cancelled the paid Haiku replay/co-op probe; §37.25 verifies mocks only, with no Haiku speed or quality claim.
 
 #### Gateway client identification (0.3.4, in development)
 
@@ -420,7 +499,7 @@ the original deadline. The initial attempt keeps its existing timeout. Debug sta
 `status`, `waitMs` (proposed delay), `retry` (whether scheduled), and `attempt`; exhausted retries/budget still
 produce the generic `LLM request` failure and existing host fallback. Other HTTP errors are not retried.
 
-`SP_LLM_THINKING=enabled|disabled` optionally sends `thinking:{type:...}`. Omitted means the provider's
+In the default OpenAI format, `SP_LLM_THINKING=enabled|disabled` optionally sends `thinking:{type:...}`. Omitted means the provider's
 default, as before; the adapter does not infer a switch from the model name. `disabled` cannot be combined
 with either effort variable, since providers can give those conflicting switches different precedence.
 The 16000-token cap is independent of thinking effort. No faster setting is made the default until a
@@ -490,7 +569,7 @@ nonfinite or expired timing keep the provider default. Timers, token caps, promp
 77.460 seconds with some margin; it guarantees neither timely replies nor better play. Selection stays fixed
 for that decision's retries. An explicit `SP_LLM_RETRY_EFFORT` still overrides the existing token-limit follow-up;
 leave it unset to keep the adaptive choice throughout. `adaptive` is not accepted as a retry effort or with
-`SP_LLM_THINKING=disabled`. The adapter never sends the literal value `adaptive` to a provider. Adaptive debug
+`SP_LLM_THINKING=disabled`. The adapter never sends the literal value `adaptive` as an effort value. Adaptive debug
 lines add `reasoningEffort: "default" | "low"`; other configurations keep their existing request bodies.
 On the recorded default co-op observations, this threshold would choose low for 220/221 decisions. It does
 not establish that adaptive avoids the measured co-op quality tradeoff.

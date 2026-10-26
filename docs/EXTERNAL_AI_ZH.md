@@ -129,8 +129,8 @@ PowerShell 用 `$env:SP_BOT_STRATEGY = 'external'` 的形式逐个设置同名�
 
 ## 示例语言模型适配器
 
-`tools/ai/llm-agent.mjs` 通过 stdio 接入游戏，通过兼容的 `/chat/completions` 接口调用模型。
-需显式设置 `SP_LLM_BASE_URL`（包括 `/v1`）、`SP_LLM_MODEL`、`SP_LLM_API_KEY`，没有默认付费服务。
+`tools/ai/llm-agent.mjs` 通过 stdio 接入游戏，默认通过兼容的 `/chat/completions` 接口调用模型。
+需显式设置 `SP_LLM_BASE_URL`（包含服务商需要的 `/v1`）、`SP_LLM_MODEL`、`SP_LLM_API_KEY`，没有默认付费服务。
 密钥只从环境读取，不写日志／测试回放。`SP_LLM_MAX_TOKENS` 是单次回复的输出上限（默认 16000，256–32000）：会先“思考”的推理模型如果上限太小，思考就把额度用完，回复是空的；回复在给出 JSON 之前就被截断时，只要 `SP_LLM_TIMEOUT_MS` 还剩一半，会追问一次“现在决定、只回 JSON”（两次请求共用这个时限），`SP_LLM_RETRY_EFFORT` 可只给这次追问设较低的 `reasoning_effort`；机变／报价／奖励只问选择，模型可附上所选卡名 `choiceName`，与编号对不上且正好对应另一张卡时以卡名为准（§35.63）；`SP_LLM_REASONING_EFFORT`（minimal / low / medium / high）可显式指定强度；另有下文默认关闭的 adaptive 预算策略；`SP_LLM_DEBUG_FILE` 指定一个本地文件后，每次请求的失败环节、模型回复开头和采用的计划会逐行写进去，方便判断它为什么回退、每回合怎么想，从不写入密钥或请求头。`SP_LLM_TIMEOUT_MS` 默认 20000，上限 300000（`SP_EXTERNAL_AI_TIMEOUT_MS` 上限同为 300000）；游戏侧的
 总预算还包括握手，并保留一半阶段时间给回退。示例配置（先在本地或可信服务端设置环境变量）：
 
@@ -148,6 +148,79 @@ npm start
 无状态接口仍须发送该前缀。自写策略提示词强调可达盟约、合理角色、晋升收益、存活与长期投入，
 没有复制攻略，也没有声称胜过原 AI。回复使用下述 JSON 包装，本地验证计划后才转给游戏；错误时只返回
 通用失败，不回显服务端响应。测试只连接回环模拟服务器，不调用任何真实模型 API。
+
+### Anthropic Messages 与额外请求头（§37.25，开发中）
+
+`SP_LLM_API_FORMAT=openai|anthropic` 选择协议，未设时为 `openai`，保留既有请求。
+`anthropic` 向 `SP_LLM_BASE_URL` 追加 `/messages`（base 包含服务商需要的 `/v1`，不含 `/messages`），
+发送 `model`、`max_tokens`、顶层文字 `system` 块与用户 `messages`，不发送 OpenAI 的
+`response_format` 或 system-role 消息；附带 `anthropic-version: 2023-06-01`。
+`SP_LLM_AUTH_TYPE=bearer|x-api-key` 从两种认证头中选择一种，两者都从 `SP_LLM_API_KEY` 读取凭据。
+默认均为 Bearer，依据 [OpenCode 认证文档](https://dev.opencode.ai/v2/docs/console/api/inference)；
+直连 Anthropic 设为 `x-api-key`。适配器不根据域名猜认证方式。
+
+稳定系统块默认带 `cache_control:{type:"ephemeral"}`；兼容网关不支持时用 `SP_LLM_CACHE_SYSTEM=0`
+去掉，`1` 恢复，OpenAI 格式不受影响。是否命中由服务商、模型、最小前缀和过期时间决定，
+参见 [Anthropic 缓存文档](https://platform.claude.com/docs/en/build-with-claude/prompt-caching)，不保证命中。
+回复只拼接 text 块，经过原有 JSON／单括号修复／choiceName／计划校验；thinking 与 redacted-thinking
+块不解析、不写诊断。`end_turn` 才算完整回复，`max_tokens` 走原有一次有预算的追问；其他停止原因拒绝。
+响应大小、总时限、限流重试和禁止重定向的规则由两种格式共用。
+
+Anthropic 的 `inputTokens = input_tokens + cache_read_input_tokens + cache_creation_input_tokens`，
+`outputTokens = output_tokens`，`cachedTokens = cache_read_input_tokens`。
+缓存写入已计入输入，不算命中；可选诊断 `cacheWriteTokens` 单列写入量，游戏 usage 三字段协议不扩展。
+重试按每次回复累加，5 分钟／1 小时写入明细不重复计数；缺 usage 仍表示未知，思考 token 已包含在输出中。
+
+Anthropic 的思考控制如下；支持范围由所选模型决定，未设置的控制字段仍不发送：
+
+| 环境变量 | Anthropic 请求 |
+|---|---|
+| `SP_LLM_THINKING=disabled` | `thinking:{type:"disabled"}`，不可与两种 effort 变量合用 |
+| `SP_LLM_THINKING=enabled` | `thinking:{type:"adaptive"}` |
+| `SP_LLM_REASONING_EFFORT=low|medium|high` | `output_config:{effort:...}` |
+| `SP_LLM_REASONING_EFFORT=minimal` | 映射为 `output_config:{effort:"low"}`（[ASSUMED] 兼容选择） |
+| `SP_LLM_REASONING_EFFORT=adaptive` | 既有预算策略逐观察选 low 或不发 effort，与 `thinking.type` 的 adaptive 是两件事 |
+| `SP_LLM_RETRY_EFFORT` | 同样的固定强度映射，仅作用于输出截断追问 |
+| `SP_LLM_THINKING_BUDGET=N` 且 `SP_LLM_THINKING=enabled` | 旧式 `thinking:{type:"enabled",budget_tokens:N}`；仅 Anthropic，整数 `1024 ≤ N < SP_LLM_MAX_TOKENS`，不与两种 effort 合用 |
+
+[Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview) 使用 adaptive thinking；
+[旧式手动预算](https://platform.claude.com/docs/en/build-with-claude/extended-thinking) 仅用于支持它的模型，
+不用于 Haiku 5.5。适配器不从模型名猜能力，也不在报错后悄悄切换思考设置。
+
+`SP_LLM_HEADERS` 是额外请求头的 JSON 对象，例如：
+
+```sh
+export SP_LLM_HEADERS='{"HTTP-Referer":"https://example.org/","X-Title":"Stronghold local experiment"}'
+```
+
+它严格使用 transport 的 `safeHeaders` 规则：非法 JSON／非对象、忽略大小写后重名、非字符串／空值、
+控制字符、超出 `[a-z0-9-]` 的头名（忽略大小写，1–64 字符）、超过 256 字符或不可打印 HTTP Latin-1
+的值均在 IO 前以通用配置错误拒绝。禁止认证头（含 `proxy-authorization`、`x-api-key`）、`content-*`、
+`host`、cookie 以及连接／分帧控制头；transport 本身也过滤不安全的调用方头。
+适配器的 user-agent、生成的会话 ID 和 Anthropic 版本优先于额外头。请求头不进入捕获／诊断文件，
+认证使用专用配置项。
+
+### 服务商预设（配置示例，未实测兼容性）
+
+先设置上面的通用 stdio／plan 选项，安全地从环境提供密钥，再选一行。base 不包含最终方法路径。
+换服务商时清理旧的 thinking／effort／额外请求头；可用模型、JSON 模式和上下文上限由服务商决定。
+
+| 服务商 | `SP_LLM_API_FORMAT` | `SP_LLM_BASE_URL` | 模型／附加设置 |
+|---|---|---|---|
+| [DeepSeek](https://api-docs.deepseek.com/quick_start/agent_integrations/) | `openai` | `https://api.deepseek.com` | `SP_LLM_MODEL=deepseek-flash`；Bearer |
+| [OpenCode Go](https://opencode.ai/docs/go/)，Chat Completions | `openai` | `https://opencode.ai/inference/go/openai/v1` | `SP_LLM_MODEL=deepseek-v4.1-flash`；Bearer；`SP_LLM_SESSION_HEADER=x-opencode-session` |
+| OpenCode Go，Messages | `anthropic` | `https://opencode.ai/inference/go/anthropic/v1` | `SP_LLM_MODEL=claude-haiku-5-5`；Bearer；相同会话头 |
+| 直连 Anthropic | `anthropic` | `https://api.anthropic.com/v1` | 可用 Claude 模型；`SP_LLM_AUTH_TYPE=x-api-key` |
+| [OpenRouter](https://openrouter.ai/docs/quickstart) | `openai` | `https://openrouter.ai/api/v1` | 可用的 `provider/model`；Bearer；可通过 `SP_LLM_HEADERS` 附加署名头 |
+| [本机 Ollama](https://github.com/ollama/ollama/blob/main/docs/api/introduction.mdx) | `openai` | `http://127.0.0.1:11434/v1` | 已安装的本机模型；未启用认证时 `SP_LLM_API_KEY=local-unused` |
+| [本机 vLLM](https://github.com/vllm-project/vllm/blob/main/docs/serving/online_serving/openai_compatible_server.md) | `openai` | `http://127.0.0.1:8000/v1` | 有 chat template 的已加载模型名；服务端配置的密钥，未启用认证时可用 `local-unused` |
+
+除直连 Anthropic 外，表中均隐含 `SP_LLM_AUTH_TYPE=bearer`。本机服务也需要适配器的非空 key 设置，
+占位值只适用于无需认证的服务。OpenRouter 当前文档使用 `HTTP-Referer` 与 `X-OpenRouter-Title`，
+通用头选项也接受 `X-Title`。配置示例不代表订阅使用许可：部分订阅只允许在自己的工具内使用。
+应核对套餐条款与允许的流量，如实标识此适配器，不伪装成已批准的客户端；OpenCode Go 文档要求编程代理
+流量、自有 user-agent 与稳定会话 ID。维护者已取消本轮付费 Haiku 回放／合作探针，§37.25 仅有 mock
+验证，不作 Haiku 速度或质量结论。
 
 ### 网关客户端标识（0.3.4，开发中）
 
@@ -169,7 +242,7 @@ transport 错误只增加数字 `status` 和解析后的 `retryAfterMs`，不保
 调试 stage `rate-limit` 记录 `status`、拟等待 `waitMs`、是否安排重试 `retry` 和 `attempt`；
 重试次数／预算不足仍走原有通用 `LLM request` 失败与主机回退，其他 HTTP 状态不重试。
 
-`SP_LLM_THINKING=enabled|disabled` 显式发送 `thinking:{type:...}`；不设置仍使用服务商默认。
+默认 OpenAI 格式下，`SP_LLM_THINKING=enabled|disabled` 显式发送 `thinking:{type:...}`；不设置仍使用服务商默认。
 `disabled` 不可与 `SP_LLM_REASONING_EFFORT` 或 `SP_LLM_RETRY_EFFORT` 同设，避免相互覆盖。
 输出上限仍为 16000，降低上限不等同于降低思考强度。
 
@@ -218,8 +291,8 @@ low 没有同时满足 FA share／漏怪不差、合作回复采用更多的预�
 
 [ASSUMED] 90 秒参考默认合作 prep 实测 p90 77.460 秒并留余量，是待验证阈值，不能保证按时或更强。
 同一决策的重试保留这次选择；显式 `SP_LLM_RETRY_EFFORT` 仍会覆盖原有的输出截断追问，使用自适应时
-建议留空。retry effort 不接受 `adaptive`，`SP_LLM_THINKING=disabled` 也不能与其同设；服务商永远
-收不到字面量 `adaptive`。自适应诊断行增加 `reasoningEffort:default|low`，固定配置的请求体保持不变。
+建议留空。retry effort 不接受 `adaptive`，`SP_LLM_THINKING=disabled` 也不能与其同设；服务商的 effort
+字段不会收到字面量 `adaptive`。自适应诊断行增加 `reasoningEffort:default|low`，固定配置的请求体保持不变。
 该阈值在已记录的默认合作观察上会给 220/221 条决策选 low，不能据此认为自适应已解决合作质量取舍。
 只做了本地 mock 验证，**未做付费自适应对局**；这是实验选项，尚不是已证实的质量改进。测量对象仅为
 OpenCode Go 的 `deepseek-v4.1-flash`，不外推其他服务商。配置网关后沿用本次 host/provider

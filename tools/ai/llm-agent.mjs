@@ -5,7 +5,7 @@
 import { appendFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
-import { httpDecision } from '../../server/ai/transport.js';
+import { httpDecision, safeHeaders } from '../../server/ai/transport.js';
 import { validPlan } from '../../server/match/aiPlan.js';
 import { compactDigest, compactChoices, continuity, focusPlan } from './llm-context.mjs';
 import { repairPlan, shortText } from './llm-plan.mjs';
@@ -159,8 +159,12 @@ export function parseReply(content, repairs = []) {
 // Injectable transport lets prompt/continuity tests run without opening sockets; the CLI keeps bounded HTTP.
 export function createLLMAgent(env = process.env, request = httpDecision) {
   // Deliberately no default destination/model: starting the example cannot silently spend a real account's money.
+  const apiFormat = env.SP_LLM_API_FORMAT || 'openai';
+  const authType = env.SP_LLM_AUTH_TYPE || 'bearer';
+  if (!['openai', 'anthropic'].includes(apiFormat) || !['bearer', 'x-api-key'].includes(authType)) throw new Error('LLM configuration');
+  const anthropic = apiFormat === 'anthropic';
   let url;
-  try { url = new URL(`${String(env.SP_LLM_BASE_URL).replace(/\/$/, '')}/chat/completions`); } catch { throw new Error('LLM configuration'); }
+  try { url = new URL(`${String(env.SP_LLM_BASE_URL).replace(/\/$/, '')}/${anthropic ? 'messages' : 'chat/completions'}`); } catch { throw new Error('LLM configuration'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || url.search
     || !env.SP_LLM_MODEL || !env.SP_LLM_API_KEY || /[\r\n]/.test(env.SP_LLM_API_KEY)) throw new Error('LLM configuration');
   const timeoutMs = Number(env.SP_LLM_TIMEOUT_MS || 20000);
@@ -173,18 +177,40 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
   const effort = env.SP_LLM_REASONING_EFFORT, retryEffort = env.SP_LLM_RETRY_EFFORT;
   if (effort && !['minimal', 'low', 'medium', 'high', 'adaptive'].includes(effort)) throw new Error('LLM configuration');
   if (retryEffort && !['minimal', 'low', 'medium', 'high'].includes(retryEffort)) throw new Error('LLM configuration');
-  // DeepSeek's explicit switch; leave it absent for other providers and existing configurations.
+  // DeepSeek's explicit switch; Anthropic enabled uses adaptive thinking unless a legacy token budget is set.
   const thinking = env.SP_LLM_THINKING;
   if (thinking && !['enabled', 'disabled'].includes(thinking)) throw new Error('LLM configuration');
   if (thinking === 'disabled' && (effort || retryEffort)) throw new Error('LLM configuration');
+  const thinkingBudget = env.SP_LLM_THINKING_BUDGET ? Number(env.SP_LLM_THINKING_BUDGET) : undefined;
+  if (thinkingBudget !== undefined && (!anthropic || thinking !== 'enabled' || !Number.isInteger(thinkingBudget)
+    || thinkingBudget < 1024 || thinkingBudget >= maxTokens || effort || retryEffort)) throw new Error('LLM configuration');
+  // [ASSUMED] Ask for a reusable system prefix by default; gateways without explicit caching can opt out.
+  const cache = env.SP_LLM_CACHE_SYSTEM || '1';
+  if (!['0', '1'].includes(cache)) throw new Error('LLM configuration');
+  let extraHeaders;
+  try { extraHeaders = safeHeaders(env.SP_LLM_HEADERS ? JSON.parse(env.SP_LLM_HEADERS) : {}, { strict: true }); }
+  catch { throw new Error('LLM configuration'); }
+  // [ASSUMED] minimal maps to low on Anthropic. The existing adaptive *policy* resolves per observation below;
+  // Anthropic's adaptive *thinking* is a separate provider option, with soft effort rather than a token budget.
+  const thinkingOptions = selected => {
+    if (!anthropic) return { ...(selected ? { reasoning_effort: selected } : {}), ...(thinking ? { thinking: { type: thinking } } : {}) };
+    const options = {};
+    if (thinking === 'disabled') options.thinking = { type: 'disabled' };
+    if (thinking === 'enabled') options.thinking = thinkingBudget === undefined
+      ? { type: 'adaptive' } : { type: 'enabled', budget_tokens: thinkingBudget };
+    if (selected) options.output_config = { effort: selected === 'minimal' ? 'low' : selected };
+    return options;
+  };
   // Client identification for gateways that ask for it (OpenCode Go: its own user agent and a stable session header
   // per conversation, https://opencode.ai/docs/go/). SP_LLM_SESSION_HEADER names the header (x-opencode-session);
   // its value is a hash of match, seat and knowledge version, the same for every request of that seat's match.
   const userAgent = env.SP_LLM_USER_AGENT || 'stronghold-protocol-llm-agent';
   const sessionHeader = env.SP_LLM_SESSION_HEADER ? String(env.SP_LLM_SESSION_HEADER).toLowerCase() : null;
-  if (/[\r\n]/.test(userAgent) || userAgent.length > 256 || (sessionHeader && !/^x-[a-z0-9-]{1,62}$/.test(sessionHeader))) {
+  if (/[^\x20-\x7e\x80-\xff]/.test(userAgent) || userAgent.length > 256 || (sessionHeader && !/^x-[a-z0-9-]{1,62}$/.test(sessionHeader))) {
     throw new Error('LLM configuration');
   }
+  try { if (sessionHeader) safeHeaders({ [sessionHeader]: 'session' }, { strict: true }); }
+  catch { throw new Error('LLM configuration'); }
   const prompts = new Map();
   // [ASSUMED] At most 32 seat/match memories; explicit host match IDs prevent same-player cross-match reuse.
   const seats = new Map();
@@ -240,19 +266,20 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
     const choiceOnly = CHOICE_KINDS.has(o.context.kind);
     const question = choiceOnly ? { kind: o.context.kind, task: CHOICE_TASK, digest, choices }
       : { kind: o.context.kind, digest, continuity: history, strategy: shown, choices };
-    const messages = [{ role: 'system', content: system }, { role: 'user', content: JSON.stringify(question) }];
-    const body = { model: env.SP_LLM_MODEL, response_format: { type: 'json_object' }, max_tokens: maxTokens,
-      ...(selectedEffort ? { reasoning_effort: selectedEffort } : {}), ...(thinking ? { thinking: { type: thinking } } : {}), messages };
+    const messages = [...(anthropic ? [] : [{ role: 'system', content: system }]), { role: 'user', content: JSON.stringify(question) }];
+    const body = { model: env.SP_LLM_MODEL,
+      ...(anthropic ? { system: [{ type: 'text', text: system, ...(cache === '1' ? { cache_control: { type: 'ephemeral' } } : {}) }] }
+        : { response_format: { type: 'json_object' } }), max_tokens: maxTokens, ...thinkingOptions(selectedEffort), messages };
     // Shared bounded transport rejects redirects, including credential forwarding; errors are intentionally generic.
     const started = Date.now();
     let rateRetries = 0;
-    const headers = { 'user-agent': userAgent,
+    const headers = { ...extraHeaders, 'user-agent': userAgent, ...(anthropic ? { 'anthropic-version': '2023-06-01' } : {}),
       ...(sessionHeader ? { [sessionHeader]: createHash('sha256').update(key).digest('hex').slice(0, 32) } : {}) };
     const ask = async b => {
       for (;;) { // loop-cap: at most three rate-limit retries across this decision, including the length retry
         // Exact provider messages/body, never the transport config, endpoint, token or headers.
         record(captureFile, { ...info, body: b });
-        try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, headers, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
+        try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, authType, headers, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
         catch (error) {
           const status = Number.isInteger(error?.status) && error.status >= 100 && error.status <= 599 ? error.status : undefined;
           if (status === 429 || status === 503) {
@@ -268,37 +295,52 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
               if (timeoutMs - (Date.now() - started) >= Math.ceil(timeoutMs / 2)) continue;
             }
           }
-          note({ ...info, stage: 'http', error: 'request-failed', ...(status ? { status } : {}), usage: total, reasoningTokens, ms: Date.now() - started });
+          note({ ...info, stage: 'http', error: 'request-failed', ...(status ? { status } : {}), usage: total, reasoningTokens, cacheWriteTokens, ms: Date.now() - started });
           throw new Error('LLM request');
         }
       }
     };
-    let total, reasoningTokens;
+    let total, reasoningTokens, cacheWriteTokens;
     const count = r => {
       const u = r.usage;
       if (!u) return;
       total ||= { inputTokens: 0, outputTokens: 0, cachedTokens: 0 };
-      total.inputTokens += u.prompt_tokens || 0; total.outputTokens += u.completion_tokens || 0;
-      total.cachedTokens += u.prompt_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
-      const reasoning = u.completion_tokens_details?.reasoning_tokens;
+      if (anthropic) {
+        const read = u.cache_read_input_tokens || 0, write = u.cache_creation_input_tokens || 0;
+        // Anthropic input_tokens excludes both cache reads and writes; the host's inputTokens includes both.
+        total.inputTokens += (u.input_tokens || 0) + read + write;
+        total.outputTokens += u.output_tokens || 0;
+        total.cachedTokens += read;
+        cacheWriteTokens = (cacheWriteTokens || 0) + write;
+      } else {
+        total.inputTokens += u.prompt_tokens || 0; total.outputTokens += u.completion_tokens || 0;
+        total.cachedTokens += u.prompt_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens ?? 0;
+      }
+      const reasoning = anthropic ? u.output_tokens_details?.reasoning_tokens ?? u.opencode?.tokens?.reasoning
+        : u.completion_tokens_details?.reasoning_tokens;
       if (Number.isInteger(reasoning) && reasoning >= 0) reasoningTokens = (reasoningTokens || 0) + reasoning;
     };
+    const replyText = r => anthropic
+      ? (Array.isArray(r.content) ? r.content.filter(b => b?.type === 'text' && typeof b.text === 'string').map(b => b.text).join('') : '')
+      : String(r.choices?.[0]?.message?.content ?? '');
+    const replyFinish = r => anthropic
+      ? (r.stop_reason === 'end_turn' ? 'stop' : r.stop_reason === 'max_tokens' ? 'length' : 'other') : r.choices?.[0]?.finish_reason;
     let response = await ask(body);
     count(response);
-    let content = String(response.choices?.[0]?.message?.content ?? '');
-    let finish = response.choices?.[0]?.finish_reason;
+    let content = replyText(response);
+    let finish = replyFinish(response);
     // §35.63 [ASSUMED]: one retry when the reasoning budget ran out before the JSON (cycle 2: 126 of 365 requests, 54 of
     // the 58 solo ones with no text at all), while at least half the HTTP limit remains. SP_LLM_RETRY_EFFORT optionally
-    // asks for less reasoning on that retry (only for providers that honour reasoning_effort).
+    // asks for less reasoning on that retry (reasoning_effort or Anthropic output_config.effort).
     if (finish === 'length' && Date.now() - started < timeoutMs / 2) {
-      note({ ...info, stage: 'retry', finish, chars: content.length, head: content.slice(0, 300), usage: total, reasoningTokens, ms: Date.now() - started });
-      response = await ask({ ...body, ...(retryEffort ? { reasoning_effort: retryEffort } : {}), messages: [...messages, { role: 'user', content: RETRY_TEXT }] });
+      note({ ...info, stage: 'retry', finish, chars: content.length, head: content.slice(0, 300), usage: total, reasoningTokens, cacheWriteTokens, ms: Date.now() - started });
+      response = await ask({ ...body, ...(retryEffort ? thinkingOptions(retryEffort) : {}), messages: [...messages, { role: 'user', content: RETRY_TEXT }] });
       count(response);
-      content = String(response.choices?.[0]?.message?.content ?? '');
-      finish = response.choices?.[0]?.finish_reason;
+      content = replyText(response);
+      finish = replyFinish(response);
     }
     const usage = total;
-    const diagnostic = { ...info, usage, reasoningTokens, ms: Date.now() - started };
+    const diagnostic = { ...info, usage, reasoningTokens, cacheWriteTokens, ms: Date.now() - started };
     const failureText = { chars: content.length, head: content.slice(0, 300), tail: content.slice(-300),
       ...(fullReply ? { content } : {}) };
     // Usage goes into every diagnostic line: a reply the host already abandoned still cost tokens.

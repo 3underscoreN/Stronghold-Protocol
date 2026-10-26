@@ -209,6 +209,13 @@ and selects low for known co-op budgets below 90 s ([ASSUMED], experimental). It
 never wall time against virtual time; fixed settings, prompts and timers stay unchanged. Cycle 5 tested fixed
 default/low, not adaptive; the adaptive path has mock validation only. See §37.23 and the adapter instructions.
 
+0.3.4 development adapter (§37.25): `SP_LLM_API_FORMAT=anthropic` opts into Messages with a cacheable system
+block and explicit Bearer / `x-api-key` authentication. Text blocks use the same plan/choice validation, retries
+and fallback; usage includes cache reads and writes in input, reads in cached tokens, and writes separately in
+optional diagnostics. `SP_LLM_HEADERS` uses strict safe-header validation and cannot replace credentials or
+content/host/cookie/framing headers. OpenAI remains the default; no live Haiku probe was run. Provider controls,
+presets and subscription restrictions are documented in [External AI API](../EXTERNAL_AI.md).
+
 Maintainer request 2026-10-19 (§35.12): the example advisor's static knowledge includes a regenerable playbook
 from the active data and a sourced community overlay. [ASSUMED] Per-seat scoring uses only announced
 bans/enemies, public teammate boards and own progress. §35.15: the band draft returns at most eight

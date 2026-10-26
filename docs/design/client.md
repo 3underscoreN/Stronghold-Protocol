@@ -1056,3 +1056,12 @@ window is [ASSUMED]; damage, attack timing and targeting are unchanged.
 Skill model fallback (#786, §35.90): when facing up, a skill with an authored Front clip and only an attack fallback
 on Back uses Front through the skill clip and ending. Back-authored skills keep Back. [ASSUMED] This model choice
 is presentation inferred from the available animation roles; simulation facing and targeting do not change.
+
+### Release notes (#603)
+
+At first launch (including fresh installs) and after each APP_VERSION update, the title/lobby shows that version's
+CHANGELOG section, never during room/match play or session restoration. Dismissal is remembered per origin/version.
+The title footer reopens it, with newer/older navigation limited to the running release and its predecessors.
+`/CHANGELOG.md` is revalidated, including after update overlays; only that root document is served. Text-only Markdown
+supports headings, lists, code, emphasis and safe links; the document stays in its authored language. A failed fetch
+never marks it read. Unavailable storage falls back to once per page. Revision: [§37.1](../history/0.3.4.md).

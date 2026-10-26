@@ -37,6 +37,11 @@ play the same `bondUp` cue. A gain of several layers plays once, including gains
 bond activation cues use this same channel. State snapshots, settlement backfill and buffered field-entry events
 do not generate layer cues. Field entry, leaving the game and muting cancel playing or still-decoding layer audio.
 
+Pending generic battle sounds (leak alarms, heals, deploys and deaths without bank-pool metadata) also belong to
+their field: replacement, return to preparation and game-screen cleanup invalidate them before playback or a failed
+plugin's fallback can start. UI clicks keep their pending feedback across a field change. Sounds already playing
+retain their existing lifetime; this does not change official bank limits, pitch, delay or the remake's cooldowns.
+
 `import { createFieldView } from './render/app.js'`
 
 ```js
@@ -588,6 +593,10 @@ subscriber and retains only the latest request per bank/unit-role; at most 64 un
 across fields, so repeated field changes cannot grow a stalled promise's handler list. Undecoded requests older than
 2500 real ms are discarded when decoding finishes. Field replacement, returning to prep and game-screen cleanup
 invalidate pending callbacks with a field generation token, cancel delay timers and stop playing pool sources.
+Pending generic battle cues use that same field generation, including their plugin fallback. The field lifecycle's
+`stopFieldSounds()` also invalidates pending operator lines, releases their voice gate and fades out the current line;
+it releases prep landing voices immediately and fades any playing landing out, without counting cleanup as takeover.
+UI feedback, BGM and scoped bond cues retain their own lifecycles, so a new prep layer cue survives battle cleanup.
 These queue bounds, expiry and lifecycle/scheduling choices are web-client guards [ASSUMED]. A zero bank limit means no
 bank cap, still subject to the global budget. Missing pool metadata keeps the legacy two-copy behavior; sparse/custom
 banks default to cap 2, no takeover, pitch 1 and delay 0. A cosmetic replacement absent from the bank's file list uses

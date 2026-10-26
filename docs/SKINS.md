@@ -57,7 +57,8 @@ operator's outfits, not as a second choice:
 - **The plugin writes the summon's appearances under the owner's skin key**: `tokens[<tokenId>].skins[<skinId>]`, a skin
   record (docs/PLUGINS.md §9). The key is the operator skin the player wears, so one token serves two owners' outfits.
 - **Every surface publishes the summon's `skin` as its owner's choice**: prep board, hand and 临时整备区
-  (`pieceView` / `_prepBoardUnits`) resolve it through the owner piece; the sim copies the owner unit's `skin` at
+  (`pieceView` / `_prepBoardUnits`) resolve it through the owner piece, passing a 自选 owner's picked `charId` to
+  `skinFor` just as `battleInput` does; the sim copies the owner unit's `skin` at
   creation (including the late owner link), and `UnitInfo.ownerCharId` lets a running battle re-read the public choice
   like an operator body.
 - **A missing skin or model falls back**: `spineEntry` / `tokenAvatarUrl` / `unitPictureUrl` use the summon's own

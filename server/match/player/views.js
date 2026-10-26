@@ -21,8 +21,9 @@ export class PlayerViews {
     if (!p || p.kind !== 'token' || p.ownerUid == null) return null;
     const owner = this.find(p.ownerUid)?.piece;
     if (!owner || owner.kind !== 'chess') return null;
-    // the owner's CHESS record (not the piece): skinFor resolves the effective body, stand-in included
-    return this.skinFor(this.gd.chess(owner.id));
+    // Match battleInput: a 自选 owner wears its pick's outfit; otherwise resolve the effective body, stand-in included.
+    const pick = this.diyPickOf(owner.id);
+    return this.skinFor(this.gd.chess(owner.id), pick ? pick.charId : null);
   }
 
   pieceView(p, rc = null) {

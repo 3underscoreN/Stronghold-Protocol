@@ -290,6 +290,50 @@ describe('皮肤: the lobby seat and the match', () => {
     assert.equal(ps.pieceView(tok).skin, undefined);
   });
 
+  test('a 自选 owner gives its summon the same outfit on the board, hand, temp, scout and battle', (t) => {
+    const slot = 'chess_char_6_diy1_a';
+    const charId = 'char_250_phatom';
+    const selected = `${charId}@sale#4`;
+    const h = makeMatch({ mode: 'solo', seats: [{ seat: 0, playerId: 'p_0', name: 'P0', connected: true,
+      diy: { [slot]: { charId, skillIndex: 2, uniEquipId: null } }, skins: { [charId]: selected } }] });
+    t.after(() => h.m.dispose());
+    const ps = h.ps('p_0');
+    assert.equal(ps.diyPickOf(slot)?.charId, charId, 'the real seat selection reaches the owner');
+    const owner = ps.newPiece('chess', slot);
+    const token = ps.newPiece('token', 'token_10007_phatom_twin', { ownerUid: owner.uid });
+    assert.ok(ps.gd.token(token.id), 'the summon resolves from the backup operator data');
+    ps.board.set('10,4', owner);
+    ps.board.set('10,5', token);
+    const input = ps.battleInput();
+    assert.equal(input.units.find((u) => u.uid === owner.uid).skin, selected);
+    const sim = new Battle({ fieldId: 'test', data: DATA, players: [input], spawns: [] });
+    sim.start();
+    const info = sim.fieldMeta().units.find((u) => u.uid === token.uid);
+    assert.equal(info.skin, selected);
+    assert.equal(info.ownerCharId, charId);
+
+    // Resolve the owner in each storage area, including when neither piece is on the board.
+    for (const area of ['board', 'hand', 'temp']) {
+      ps.board.clear();
+      ps.hand.fill(null);
+      ps.temp.fill(null);
+      if (area === 'board') {
+        ps.board.set('10,4', owner);
+        ps.board.set('10,5', token);
+      } else {
+        ps[area][0] = owner;
+        ps[area][1] = token;
+      }
+      for (const skin of [selected, null]) {
+        assert.equal(h.m.setSkins('p_0', skin ? { [charId]: skin } : {}).ok, true);
+        const priv = ps.privateView()[area].find((p) => p?.uid === token.uid);
+        const scout = h.m.prepFieldMeta(ps).units.find((u) => u.uid === token.uid);
+        assert.equal(priv.skin, skin || undefined, `${area}: own summon follows the pick`);
+        assert.equal(scout.skin, skin || undefined, `${area}: scout follows the same pick`);
+      }
+    }
+  });
+
   test('a summon listed before its owner still takes the owner\'s outfit, and the skin never reaches Battle.result', () => {
     const units = (skin) => [
       { kind: 'token', tokenId: 'token_10006_vodfox_doll', uid: 't1', row: 9, col: 1, ownerUid: 'u1' },

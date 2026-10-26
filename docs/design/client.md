@@ -1088,3 +1088,7 @@ with multiple members has no inferred owner's progress. Battle displays retain t
 [ASSUMED] Cosmetic plugin folders may contain 512 MB; other classes retain 200 MB and all retain 5000 files.
 Studio aggregate writes and staged candidates enforce the manifest's class ceiling, using the incoming class for a
 manifest replacement. Downloads/catalogue entries use the 512 MB outer cap until the extracted manifest is checked.
+
+### Summon outfits (§37.10)
+
+召唤物时装沿用主人干员的公开选择，自选主人显式使用所选干员 `charId`；备战、手牌、临时整备、侦察与战斗一致，缺失资源回退默认模型。来源、显示层边界和插件格式见 [SKINS.md](../SKINS.md) 与 [0.3.4 §37.10](../history/0.3.4.md)。

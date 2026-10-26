@@ -148,3 +148,5 @@ Offline checks and game runtime never fetch them; derived records and the plugin
 | §36 | [history/0.3.3.md](history/0.3.3.md) | 0.3.3 — released 2026-10-25，0.3.2 的热修复；第一期商店装备核查与空栏显示（§36.1）、满休整区互换（§36.2）、跨版本装备图标缓存（§36.3） |
 
 Default-off spectator AI handover (maintainer decision 2026-10-24, §35.100): [AI handover rules](history/0.3.2/ai-handover.md).
+
+0.3.3 之后面向 **0.3.4（未发布）** 的修正记录在 [§37](history/0.3.4.md)。

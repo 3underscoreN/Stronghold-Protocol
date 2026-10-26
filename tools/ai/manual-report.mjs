@@ -4,6 +4,38 @@ const short = (s, n = 110) => { const t = clean(s); return t.length > n ? `${t.s
 const json = x => JSON.stringify(x);
 const progress = p => p ? `${p.current}/${p.total}` : '';
 export const actionList = o => o.digest.actions.map(a => `${a.id}: ${a.text} ${json(a.intent)}`).join('\n') + '\n';
+const num = n => n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n);
+const RAW = 'Raw intents (zero-based): buy {"t":"g.buy","slot":S}; bench/withdraw {"t":"g.move","uid":U,"to":{"area":"hand","idx":I}} '
+  + '(I = the Hand slot number; an occupied slot swaps); place/move {"t":"g.move","uid":U,"to":{"area":"board","row":R,"col":C},"dir":"UP"} '
+  + '(UP = +row; an occupied tile swaps); equip {"t":"g.equip","itemUid":I,"targetUid":U}; sell {"t":"g.sell","uid":U}.';
+
+// §37.29 [ASSUMED] The own field with the highest row on top (UP = +row): ground routes as arrows toward the objective,
+// flyer lines as ~, deploy tiles . (ground) / H (high ground), own board pieces 1-9 then letters (no H).
+const CODES = '123456789ABCDEFGIJKLMNOPQRSTUVWXYZ';
+const role = p => p.class ? ` [${[p.class, ...['air', 'block', 'sustain'].filter(k => p.caps?.[k])].join(' ')}]` : '';
+function mapLines(d) {
+  const g = d.geometry, key = (r, c) => `${r},${c}`, cells = new Map(), marks = new Map();
+  if (!g) return [];
+  for (const t of g.tiles || []) cells.set(key(...t.at), t.terrain === 'ranged' ? 'H' : '.');
+  const arrow = ([r, c], [nr, nc]) => nr > r ? '^' : nr < r ? 'v' : nc > c ? '>' : '<';
+  for (const rt of (g.routes || []).filter(rt => !rt.fly)) rt.tiles.forEach((t, i) => {
+    const a = i + 1 < rt.tiles.length ? arrow(t, rt.tiles[i + 1]) : i > 0 ? arrow(rt.tiles[i - 1], t) : '*';
+    const had = marks.get(key(...t));
+    marks.set(key(...t), had && had !== a ? '+' : a);
+  });
+  for (const rt of (g.routes || []).filter(rt => rt.fly)) for (const t of rt.tiles) if (!marks.has(key(...t))) marks.set(key(...t), '~');
+  const units = d.board.filter(p => p.row != null).map((p, i) => ({ p, code: CODES[i] || '?' }));
+  const at = new Map(units.map(u => [key(u.p.row, u.p.col), u.code]));
+  const used = [...cells.keys(), ...marks.keys(), ...at.keys()].map(k => Number(k.split(',')[1]));
+  if (!used.length) return [];
+  const cols = [];
+  for (let c = Math.min(...used); c <= Math.max(g.cols[1], ...used); c++) cols.push(c);
+  const lines = ['\n## Map (own field, top = highest row, UP = +row; arrows ground route, ~ flyers, . ground tile, H high ground)',
+    `     ${cols.map(c => String(c).padStart(3)).join('')}`];
+  for (let r = g.rows[1]; r >= g.rows[0]; r--) lines.push(`${String(r).padStart(4)} ${cols.map(c => (at.get(key(r, c)) || marks.get(key(r, c)) || cells.get(key(r, c)) || ' ').padStart(3)).join('')}`);
+  if (units.length) lines.push(`Units: ${units.map(({ p, code }) => `${code}=${p.uid} ${p.name} ${p.dir}${/[<>^v+*]/.test(marks.get(key(p.row, p.col)) || '') ? ' on route' : ''}`).join('; ')}`);
+  return lines;
+}
 
 export function observationMarkdown(o, pack, n) {
   const d = o.digest, c = o.context, own = o.private;
@@ -20,16 +52,25 @@ export function observationMarkdown(o, pack, n) {
   lines.push(`Counters: spent ${own.stats.gold}, refreshes ${own.stats.refreshes}, merges ${own.stats.merges}.`);
   lines.push('\n## Last response / host feedback');
   lines.push(...(o.results?.length ? o.results.map(r => `${r.ok ? 'ACCEPTED' : 'REJECTED'} ${json(r.intent)}: ${r.error || 'ok'}${r.detail ? ` (${clean(r.detail)})` : ''}${r.fallback ? ' — FALLBACK' : ''}`) : ['None.']));
+  const b = d.lastBattle;
+  if (b) {
+    lines.push(`\n## Last battle R${b.round}${b.boss ? ' (boss field)' : ''}: killed ${b.killed}/${b.total}, LP −${b.lpLoss} → ${b.lp}`);
+    lines.push(`Leaks: ${b.leaks.map(l => `${l.name} ×${l.count}${l.counted !== l.count ? ` (${l.counted} counted)` : ''}${l.gates.length ? ` ${l.gates.join('/')} gate` : ''}`).join('; ') || 'none'}.`);
+    lines.push(`Units dmg/kills/taken/heal: ${b.units.slice(0, 12).map(u => `${u.uid ?? '-'} ${u.name} ${num(u.dmg)}/${u.kills}/${num(u.taken)}/${num(u.heal)}`).join('; ') || 'none'}.`);
+  }
   lines.push('\n## Shop');
   for (const s of d.shop.filter(Boolean)) {
     const inventory = [...held, ...held.flatMap(p => (p.items || []).map(i => ({ ...i, kind: 'item' })))];
     const copies = inventory.filter(p => p.kind === s.kind && (p.baseId || p.id) === (s.baseId || s.id));
-    lines.push(`${s.slot}: ${s.name} T${s.tier} $${s.price} ${s.sold ? 'SOLD' : ''}${s.frozen ? ' FROZEN' : ''}; ${bonds(s.bonds)}; owned ${copies.filter(p => !p.golden).length} normal + ${copies.filter(p => p.golden).length} elite${s.kind === 'item' ? `; ${short(catalogue.get(s.id)?.effect)}` : ''}`);
+    lines.push(`${s.slot}: ${s.name}${role(s)} T${s.tier} $${s.price} ${s.sold ? 'SOLD' : ''}${s.frozen ? ' FROZEN' : ''}; ${bonds(s.bonds)}; owned ${copies.filter(p => !p.golden).length} normal + ${copies.filter(p => p.golden).length} elite${s.kind === 'item' ? `; ${short(catalogue.get(s.id)?.effect)}` : ''}`);
   }
+  // §37.29: buy shortcuts need a free hand slot; say so instead of silently listing none
+  const handFull = own.hand.length > 0 && own.hand.every(Boolean);
   for (const [label, pieces] of [['Hand', d.bench], ['Temp', d.overflow], ['Board', d.board]]) {
-    lines.push(`\n## ${label}`);
-    lines.push(...(pieces.length ? pieces.map(p => `uid=${p.uid} ${p.name}${p.golden ? ' ELITE' : ''} ${p.row != null ? `@${p.row},${p.col} ${p.dir}` : p.slot != null ? `slot=${p.slot}` : ''}; ${bonds(p.bonds)}${p.items?.length ? `; items ${p.items.map(i => `${i.uid}:${i.name}${i.progress ? ` ${progress(i.progress)}` : ''}`).join(', ')}` : ''}${p.kind === 'item' ? `; ${short(catalogue.get(p.id)?.effect)} ${progress(p.progress)}` : ''}`) : ['Empty.']));
+    lines.push(`\n## ${label}${label === 'Hand' && handFull ? ' (FULL: no buy or reward shortcuts until you sell or place a piece)' : ''}`);
+    lines.push(...(pieces.length ? pieces.map(p => `uid=${p.uid} ${p.name}${role(p)}${p.golden ? ' ELITE' : ''} ${p.row != null ? `@${p.row},${p.col} ${p.dir}` : p.slot != null ? `slot=${p.slot}` : ''}; ${bonds(p.bonds)}${p.items?.length ? `; items ${p.items.map(i => `${i.uid}:${i.name}${i.progress ? ` ${progress(i.progress)}` : ''}`).join(', ')}` : ''}${p.kind === 'item' ? `; ${short(catalogue.get(p.id)?.effect)} ${progress(p.progress)}` : ''}`) : ['Empty.']));
   }
+  lines.push(...mapLines(d));
   lines.push('\n## Bonds (banked layers; counts are current, hand is potential unless countsHand)');
   const entries = new Map(d.bonds.map(b => [b.bondId, b]));
   for (const p of held) for (const id of p.bonds || []) if (!entries.has(id)) entries.set(id, { bondId: id, count: 0, layers: 0, thresholds: catalogue.get(id)?.thresholds });
@@ -46,6 +87,8 @@ export function observationMarkdown(o, pack, n) {
     waves.set(key, (waves.get(key) || 0) + e.count);
   }
   lines.push(...(waves.size ? [...waves].map(([k, count]) => `${k}: ×${count}`) : ['None.']));
+  const briefs = new Map(d.upcoming.filter(e => e.enemy).map(e => [e.enemyKey, e]));
+  for (const e of briefs.values()) lines.push(`${e.boss ? 'BOSS' : 'Elite'} ${e.name}: HP ${e.enemy.hp} DEF ${e.enemy.def} RES ${e.enemy.res} ${e.enemy.fly ? 'FLY' : e.enemy.motion}${e.enemy.effect ? ` — ${short(e.enemy.effect, 160)}` : ''}`);
   if (o.public.bossHp) lines.push(`Leader pool ${o.public.bossHp.hp}/${o.public.bossHp.max}`);
   lines.push('\n## Pending choices');
   for (const a of d.actions.filter(a => a.intent.t === 'g.band')) lines.push(`${a.id} band ${a.intent.bandId}: ${name(a.intent.bandId)} — ${short(catalogue.get(a.intent.bandId)?.effect)}`);
@@ -62,20 +105,38 @@ export function observationMarkdown(o, pack, n) {
     for (const p of d.opponents) lines.push(`${p.playerId} LP=${p.lp}, band=${name(p.bandId)}; ${p.bonds.filter(b => b.active).map(b => `${name(b.bondId)} ${b.count} L${b.layers}`).join('; ')}; board ${p.board.map(u => `${u.name}@${u.row},${u.col}`).join(', ')}`);
   }
   lines.push('\n## Actions (IDs expire at the next observation)');
-  // Placement is often thousands of actions. Group consecutive direction IDs at the same tile without losing the mapping.
-  const moves = new Map();
+  // Placement is often thousands of actions and equipment one per target: group them without losing the mapping.
+  // §37.29: shop, economy and picks first, then equipment, sells, benching, placements (the page cut drops the tail).
+  const who = new Map([...held, ...held.flatMap(p => p.items || [])].map(p => [p.uid, p.name]));
+  const singles = [], equips = new Map(), grouped = { sell: [], bench: [], destroy: [], unequip: [] }, moves = new Map();
+  let ready = null, benchIdx = null;
   for (const a of d.actions) {
-    if (a.intent.t === 'g.move' && a.intent.to.area === 'board') {
-      const i = a.intent, key = `${i.uid}@${i.to.row},${i.to.col}`;
+    const i = a.intent;
+    if (i.t === 'g.move' && i.to.area === 'board') {
+      const key = `${i.uid}@${i.to.row},${i.to.col}`;
       if (!moves.has(key)) moves.set(key, []);
       moves.get(key).push(`${a.id}=${i.dir}`);
-    } else lines.push(`${a.id}: ${a.text}`);
+    } else if (i.t === 'g.move') { benchIdx = i.to.idx; grouped.bench.push(`${a.id}=${i.uid} ${who.get(i.uid) || ''}`.trim()); }
+    else if (i.t === 'g.equip') {
+      if (!equips.has(i.itemUid)) equips.set(i.itemUid, []);
+      equips.get(i.itemUid).push(`${a.id}=${i.targetUid} ${who.get(i.targetUid) || ''}`.trim());
+    } else if (i.t === 'g.sell' || i.t === 'g.destroy') grouped[i.t.slice(2)].push(`${a.id}=${i.uid} ${who.get(i.uid) || ''}`.trim());
+    else if (i.t === 'g.unequip') grouped.unequip.push(`${a.id}=${i.itemUid} ${who.get(i.itemUid) || ''}`.trim());
+    else if (i.t === 'g.ready') ready = `${a.id}: ${a.text}`;
+    else singles.push(`${a.id}: ${a.text}`);
   }
+  lines.push(...singles);
+  for (const [item, ids] of equips) lines.push(`equip ${item} ${who.get(item) || ''} on: ${ids.join(', ')}`);
+  if (grouped.sell.length) lines.push(`sell: ${grouped.sell.join(', ')}`);
+  if (grouped.bench.length) lines.push(`bench to hand idx ${benchIdx}: ${grouped.bench.join(', ')}`);
+  if (grouped.destroy.length) lines.push(`destroy: ${grouped.destroy.join(', ')}`);
+  if (grouped.unequip.length) lines.push(`unequip: ${grouped.unequip.join(', ')}`);
+  if (ready) lines.push(ready);
   for (const [key, ids] of moves) lines.push(`place ${key}: ${ids.join(' ')}`);
-  lines.push(`\nAnswer act-${n}.json: ["a1"] or [{"t":"g.buy","slot":0}]. Prep {"done":true} submits Ready through the validator. Raw intents support swaps/Arts; see obs-${n}.json actions and geometry.`);
   // [ASSUMED] ~3–4k-token target: 9000 characters, with full lossless actions/request beside the compact page.
   // Keep header, feedback and all state ahead of the potentially huge placement list.
-  const footer = `\nFull actions: obs-${n}.actions.md; raw digest: obs-${n}.json; full request: obs-${n}.request.json.\n`;
+  const footer = `\nAnswer act-${n}.json: ["a1"] or [{"t":"g.buy","slot":0}]. Prep {"done":true} submits Ready through the validator.\n${RAW}\n`
+    + `Full actions: obs-${n}.actions.md; raw digest: obs-${n}.json; full request: obs-${n}.request.json.\n`;
   let out = '';
   for (const line of lines) {
     if (out.length + line.length > 8800) { out += '\n[More detail in the raw digest and full action list.]\n'; break; }

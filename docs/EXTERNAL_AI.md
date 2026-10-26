@@ -432,6 +432,17 @@ Shop/hand indices are zero-based. Direct agents can mix raw intents and IDs in `
 IDs are local to the request ID, not stable across observations; never infer an ID from a previous response.
 The saved mapping goes through the same C2S and human validation, so a previously affordable or available choice
 can still fail after another action/seat changes the state. Unknown IDs yield `BAD_MSG` and consume budget.
+A buy or reward ID also stands for the operator/item its slot showed: when an earlier action of the same reply (a
+refresh, a level-up, a new reward offer) has put something else in that slot, the ID fails with `STALE_ACTION`
+(the detail names both) instead of buying the newcomer. Raw `g.buy`/`g.reward` intents carry no such check.
+
+§37.29 [ASSUMED] Both modes also carry `digest.geometry.routes` (prep only): the round's routes over the own field as the
+built-in placement model traces them from the preview's gates and the map's roads, `[{fly, tiles: [[row, col], …]}]`
+(gate → objective, objective tile excluded, a boss round mapped from the boss field), and `digest.lastBattle`: the seat's
+last own battle as the battle statistics panel shows it, `{round, boss?, lp, lpLoss, killed, total, leaks: [{enemyKey,
+name, count, counted, gates}], units: [{uid, id, name, kind, dmg, kills, taken, heal}]}` (units by damage, at most 24;
+`gates` are the preview gates of that enemy kind). Leader and elite `upcoming` entries carry the catalogue brief that
+bounty cards use (`enemy: {hp, def, res, motion, fly, effect}`).
 
 [ASSUMED] The shortcut list is conservative, not exhaustive: it includes purchases, economy, sells, ordinary
 equipment, permitted unequip, empty-tile placements/facing/withdrawal, rewards and available draft/offer picks.

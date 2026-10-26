@@ -8,6 +8,7 @@ import { httpDecision, StdioAI } from '../ai/transport.js';
 import { aiDigest } from './aiDigest.js';
 import { validPlan, validUsage } from './aiPlan.js';
 import { knowledgePack } from '../ai/knowledge.js';
+import { previewOf } from './waves.js';
 import { randomUUID } from 'node:crypto';
 
 export const AI_VERSION = 'sp-ai/1';
@@ -46,6 +47,42 @@ export function aiObservation(m, ps, { id, kind, deadline, remaining }, results)
       // a non-default official version's match (DESIGN §35.23): its registry id; the default's observation is unchanged
       ...(m.version ? { gameVersion: m.version } : {}),
       ...(m.externalAI?.config.mode === 'plan' ? { matchId: m.externalAI.matchId } : {}) }, results });
+}
+
+// §37.29 [ASSUMED] Both modes: the seat's last own battle as the battle statistics panel and the leaks show it to a
+// human (per-unit damage/kills/taken/healing, leaks per enemy kind with the gates the round's preview showed for it).
+function gatesOf(spawns) {
+  const out = new Map();
+  for (const e of previewOf(Array.isArray(spawns) ? spawns : [])) out.set(e.enemyKey, [...new Set([...(out.get(e.enemyKey) || []), e.gate])]);
+  return out;
+}
+function battleReport(round, ps, ev, gates) {
+  const r = ev.result || {}, leaks = new Map();
+  for (const l of (r.leaked || []).filter(Boolean)) {
+    const e = leaks.get(l.enemyKey) || { enemyKey: l.enemyKey, count: 0, counted: 0, gates: gates?.get(l.enemyKey) || [] };
+    e.count++;
+    if (l.counted !== false) e.counted++;
+    leaks.set(l.enemyKey, e);
+  }
+  const units = (r.unitStats || []).filter(Boolean).map(u => ({ uid: u.uid ?? null, id: u.defId, kind: u.kind,
+    dmg: u.dmg || 0, kills: u.kills || 0, taken: u.taken || 0, heal: u.heal || 0 })).sort((a, b) => b.dmg - a.dmg).slice(0, 24);
+  return { round, ...(ev.boss ? { boss: true } : {}), lp: ps.lp, lpLoss: ev.lpLoss || 0, killed: r.killed || 0, total: r.total || 0,
+    leaks: [...leaks.values()].sort((a, b) => b.counted - a.counted || b.count - a.count), units };
+}
+
+// A buy or reward shortcut stands for what its observation showed in that slot. A refresh, a level-up or a new reward
+// offer earlier in the same reply can put something else there: the shortcut is then refused, not re-aimed (round-54
+// manual play: "refresh" then "buy slot 4" bought the operator the refresh rolled in).
+function slotExpectations(observation) {
+  const { slots, rewardOffer } = observation.private.shop;
+  return new Map(observation.digest.actions.flatMap(({ id, intent }) => intent.t === 'g.buy' ? [[id, slots[intent.slot]?.id ?? null]]
+    : intent.t === 'g.reward' ? [[id, rewardOffer?.slots[intent.idx]?.id ?? null]] : []));
+}
+function staleShortcut(job, ps, action) {
+  if (typeof action !== 'string' || !job.expect?.has(action)) return null;
+  const intent = job.actions.get(action), want = job.expect.get(action);
+  const now = (intent.t === 'g.buy' ? ps.shop.slots[intent.slot] : ps.offers[0]?.slots[intent.idx])?.id ?? null;
+  return now === want ? null : { error: 'STALE_ACTION', detail: `${action} was for ${want}; that slot now holds ${now ?? 'nothing'}` };
 }
 
 export function validAIReply(reply, id, remaining) {
@@ -126,6 +163,7 @@ export class ExternalAI {
     const observation = aiObservation(this.m, job.ps, { ...job, remaining: this.config.maxIntents - job.used }, job.state.results);
     observation.context.mode = this.config.mode;
     job.actions = new Map(observation.digest.actions.map(a => [a.id, a.intent]));
+    job.expect = slotExpectations(observation);
     if (this.replay) { job.state.results = []; return; }
     job.controller = new AbortController();
     job.state.results = [];
@@ -155,12 +193,15 @@ export class ExternalAI {
   observe(ps, hook, ev) {
     // §35.11: only completed, own-seat actions/results a human can observe. No inference from missing pieces.
     const state = this.states.get(ps?.playerId);
-    if (this.config.mode !== 'plan' || !state || state.disabled || ev.preview) return;
+    if (!state || state.disabled || ev.preview) return;
+    if (hook === 'onBattleStart') { state.gates = gatesOf(ev.spawns); return; }
     if (hook === 'onBattleResult') {
-      state.lastBattle = { round: this.m.round, lp: ps.lp, lpLoss: ev.lpLoss,
+      state.battle = battleReport(this.m.round, ps, ev, state.gates);
+      if (this.config.mode === 'plan') state.lastBattle = { round: this.m.round, lp: ps.lp, lpLoss: ev.lpLoss,
         leaks: (ev.result?.leaked || []).filter(l => l && l.counted !== false).length };
       return;
     }
+    if (this.config.mode !== 'plan') return;
     let event;
     if (hook === 'onBuy') event = { type: 'buy', id: ev.slot.id, kind: ev.kind, cost: ev.price };
     if (hook === 'onSold') event = { type: 'sell', id: ev.piece.id, uid: ev.piece.uid };
@@ -171,6 +212,8 @@ export class ExternalAI {
     // [ASSUMED] Keep the last 256 own events; expose the sequence so clients report gaps, never invent outcomes.
     if (state.events.length > 256) state.events.shift();
   }
+
+  battleFor(ps) { return this.states.get(ps.playerId)?.battle || null; }
 
   feedbackFor(ps) {
     const s = this.states.get(ps.playerId);
@@ -245,7 +288,7 @@ export class ExternalAI {
       const schema = validateC2S(intent);
       const result = schema !== null || !AI_ACTIONS[job.kind].includes(intent?.t) ? { error: ERR.BAD_MSG }
         : completed || !this.active(job) ? { error: ERR.WRONG_PHASE }
-          : this.m._handleSeatIntent(ps, intent);
+          : staleShortcut(job, ps, action) ?? this.m._handleSeatIntent(ps, intent);
       state.results.push({ intent, ...result });
       if (state.results.length > this.config.maxIntents) state.results.shift();
       completed ||= job.complete();

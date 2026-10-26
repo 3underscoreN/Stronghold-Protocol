@@ -194,6 +194,21 @@ The complete policy and scope are in [External AI API](../EXTERNAL_AI.md).
 Maintainer decision 2026-10-23 (§35.66): a release package does not include this strategy. The zip, the update
 package and the Docker image omit the host, and a packaged server ignores external-AI settings.
 
+0.3.4 development adapter (§37.21): provider thinking mode is explicitly configurable, independent of the
+token cap. Opt-in local captures omit credentials/headers; debug usage may distinguish reasoning tokens.
+[ASSUMED] A normal-stop response with a complete final `plan.items.equip` and only its outer wrapper brace
+missing may recover that single brace before the unchanged validators. This changes neither match timers,
+the default provider controls, legacy behavior nor the release gate. See [adapter details](../EXTERNAL_AI.md).
+
+0.3.4 development adapter (§37.23): HTTP 429/503 can retry at most three times per decision, within the
+original deadline. [ASSUMED] Retry-After is capped at 30 s (missing/invalid: 10 s), and each retry reserves
+half the original request budget after waiting. Numeric status/delay diagnostics never include remote error
+bodies. Exhaustion retains the generic failure and existing fallback; host timers and release isolation stay fixed.
+The opt-in `SP_LLM_REASONING_EFFORT=adaptive` policy keeps provider defaults for solo/ample or unknown budgets,
+and selects low for known co-op budgets below 90 s ([ASSUMED], experimental). It uses the host clock pair,
+never wall time against virtual time; fixed settings, prompts and timers stay unchanged. Cycle 5 tested fixed
+default/low, not adaptive; the adaptive path has mock validation only. See §37.23 and the adapter instructions.
+
 Maintainer request 2026-10-19 (§35.12): the example advisor's static knowledge includes a regenerable playbook
 from the active data and a sourced community overlay. [ASSUMED] Per-seat scoring uses only announced
 bans/enemies, public teammate boards and own progress. §35.15: the band draft returns at most eight

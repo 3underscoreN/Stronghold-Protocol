@@ -167,3 +167,31 @@ test('the stdio LLM example runs through matchrun using only the loopback mock A
   assert.equal(r.external.fallbacks, 0); assert.equal(r.external.inputTokens, calls * 10); assert.equal(r.external.outputTokens, calls * 2);
   assert.ok(!`${stdout}${stderr}`.includes('test-secret'));
 });
+
+test('LLM adapter identifies itself and sends a stable per-seat session header when a gateway asks for one', async t => {
+  const seen = [];
+  const url = await mock(t, (req, res) => {
+    req.resume();
+    req.on('end', () => {
+      seen.push({ ua: req.headers['user-agent'], session: req.headers['x-opencode-session'], auth: req.headers.authorization });
+      res.end(JSON.stringify({ choices: [{ finish_reason: 'stop', message: { content: '{"economy":{"maxRefreshes":1}}' } }] }));
+    });
+  });
+  const plain = createLLMAgent(envFor(url));
+  await plain(hello); await plain(observation);
+  assert.equal(seen[0].ua, 'stronghold-protocol-llm-agent');
+  assert.equal(seen[0].session, undefined, 'no session header unless configured');
+  const agent = createLLMAgent({ ...envFor(url), SP_LLM_SESSION_HEADER: 'x-opencode-session', SP_LLM_USER_AGENT: 'sp-test/1' });
+  await agent(hello);
+  await agent(observation); await agent({ ...observation, id: 'ai-2' });
+  await agent({ ...observation, id: 'ai-3', digest: { ...observation.digest, playerId: 'two' } });
+  const [a, b, c] = seen.slice(1);
+  assert.equal(a.ua, 'sp-test/1');
+  assert.match(a.session, /^[0-9a-f]{32}$/);
+  assert.equal(b.session, a.session, 'one conversation per seat and match');
+  assert.notEqual(c.session, a.session, 'another seat is another conversation');
+  assert.equal(a.auth, 'Bearer test-secret', 'caller headers never replace the authorization');
+  for (const bad of [{ SP_LLM_SESSION_HEADER: 'authorization' }, { SP_LLM_SESSION_HEADER: 'x-a\r\nb' }, { SP_LLM_USER_AGENT: 'a\nb' }]) {
+    assert.throws(() => createLLMAgent({ ...envFor(url), ...bad }), /LLM configuration/);
+  }
+});

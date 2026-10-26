@@ -3,6 +3,7 @@
 // 16 concurrent requests (§35.62: four seats plus requests the host abandoned that are still finishing).
 // §35.9. Explicit stdio adapter; importing this module never connects. No credentials/remote errors on stdout/stderr.
 import { appendFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { httpDecision } from '../../server/ai/transport.js';
 import { validPlan } from '../../server/match/aiPlan.js';
@@ -175,6 +176,14 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
   const thinking = env.SP_LLM_THINKING;
   if (thinking && !['enabled', 'disabled'].includes(thinking)) throw new Error('LLM configuration');
   if (thinking === 'disabled' && (effort || retryEffort)) throw new Error('LLM configuration');
+  // Client identification for gateways that ask for it (OpenCode Go: its own user agent and a stable session header
+  // per conversation, https://opencode.ai/docs/go/). SP_LLM_SESSION_HEADER names the header (x-opencode-session);
+  // its value is a hash of match, seat and knowledge version, the same for every request of that seat's match.
+  const userAgent = env.SP_LLM_USER_AGENT || 'stronghold-protocol-llm-agent';
+  const sessionHeader = env.SP_LLM_SESSION_HEADER ? String(env.SP_LLM_SESSION_HEADER).toLowerCase() : null;
+  if (/[\r\n]/.test(userAgent) || userAgent.length > 256 || (sessionHeader && !/^x-[a-z0-9-]{1,62}$/.test(sessionHeader))) {
+    throw new Error('LLM configuration');
+  }
   const prompts = new Map();
   // [ASSUMED] At most 32 seat/match memories; explicit host match IDs prevent same-player cross-match reuse.
   const seats = new Map();
@@ -225,10 +234,12 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
       ...(effort ? { reasoning_effort: effort } : {}), ...(thinking ? { thinking: { type: thinking } } : {}), messages };
     // Shared bounded transport rejects redirects, including credential forwarding; errors are intentionally generic.
     const started = Date.now();
+    const headers = { 'user-agent': userAgent,
+      ...(sessionHeader ? { [sessionHeader]: createHash('sha256').update(key).digest('hex').slice(0, 32) } : {}) };
     const ask = async b => {
       // Exact provider messages/body, never the transport config, endpoint, token or headers.
       record(captureFile, { ...info, body: b });
-      try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
+      try { return await request({ url: url.href, token: env.SP_LLM_API_KEY, headers, timeoutMs: Math.max(1, timeoutMs - (Date.now() - started)), maxBytes: 262144 }, b, new AbortController().signal); }
       catch { note({ ...info, stage: 'http', error: 'request-failed', usage: total, reasoningTokens, ms: Date.now() - started }); throw new Error('LLM request'); }
     };
     let total, reasoningTokens;

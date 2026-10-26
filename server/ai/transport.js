@@ -2,14 +2,29 @@ import http from 'node:http';
 import https from 'node:https';
 import { spawn } from 'node:child_process';
 
+// Optional caller headers (an LLM gateway's client identification, e.g. OpenCode Go's user agent and stable
+// x-opencode-session): plain token names and single-line values only; they can never replace the content headers or
+// the authorization, which are set after them.
+const RESERVED_HEADERS = new Set(['authorization', 'content-type', 'content-length', 'host', 'cookie', 'transfer-encoding']);
+function safeHeaders(h) {
+  const out = {};
+  if (!h || typeof h !== 'object') return out;
+  for (const [k, v] of Object.entries(h)) {
+    const name = String(k).toLowerCase();
+    if (!/^[a-z0-9-]{1,64}$/.test(name) || RESERVED_HEADERS.has(name) || typeof v !== 'string' || !v || v.length > 256 || /[\r\n]/.test(v)) continue;
+    out[name] = v;
+  }
+  return out;
+}
+
 // [ASSUMED] No redirects at all; bounded raw UTF-8 responses, no compression. Never log remote errors/body/argv.
 export function httpDecision(config, observation, signal) {
   return new Promise((resolve, reject) => {
     const url = new URL(config.url);
     const body = JSON.stringify(observation);
     const request = (url.protocol === 'https:' ? https : http).request(url, {
-      method: 'POST', signal, headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body),
-        ...(config.token ? { authorization: `Bearer ${config.token}` } : {}) },
+      method: 'POST', signal, headers: { ...safeHeaders(config.headers), 'content-type': 'application/json',
+        'content-length': Buffer.byteLength(body), ...(config.token ? { authorization: `Bearer ${config.token}` } : {}) },
     }, response => {
       if (response.statusCode !== 200) { response.destroy(); request.destroy(); reject(new Error('http-status')); return; }
       const chunks = [];

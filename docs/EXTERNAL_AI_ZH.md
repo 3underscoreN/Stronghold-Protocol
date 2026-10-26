@@ -147,6 +147,16 @@ npm start
 没有复制攻略，也没有声称胜过原 AI。回复使用下述 JSON 包装，本地验证计划后才转给游戏；错误时只返回
 通用失败，不回显服务端响应。测试只连接回环模拟服务器，不调用任何真实模型 API。
 
+### 网关客户端标识（0.3.4，开发中）
+
+每个请求都带 `user-agent: stronghold-protocol-llm-agent`（可用 `SP_LLM_USER_AGENT` 改，单行、不超过 256 字符）。
+`SP_LLM_SESSION_HEADER` 指定一个 `x-…` 请求头，值是对局、席位和知识版本的 32 位十六进制哈希：同一席位同一局的
+请求都相同，换席位就不同。[OpenCode Go](https://opencode.ai/docs/go/) 这类网关要求的 `x-opencode-session` 就用它。
+调用方的请求头不能替换 `authorization` 和内容相关的请求头。OpenCode Go 示例（OpenAI 兼容端点；DeepSeek 模型需要在
+账户的 Privacy → Regions 里打开 Global；该订阅为编程代理设计，流量有滥用监控）：
+`SP_LLM_BASE_URL=https://opencode.ai/inference/go/openai/v1 SP_LLM_MODEL=deepseek-v4.1-flash
+SP_LLM_SESSION_HEADER=x-opencode-session`，密钥放在 `SP_LLM_API_KEY`。
+
 ### 思考开关与 JSON 诊断（0.3.4，开发中）
 
 `SP_LLM_THINKING=enabled|disabled` 显式发送 `thinking:{type:...}`；不设置仍使用服务商默认。

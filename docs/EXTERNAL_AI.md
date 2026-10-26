@@ -393,6 +393,18 @@ requests (four seats plus requests the host abandoned that are still finishing).
 usage, so abandoned replies still show their tokens. Catalogue effect summaries retain at most 500 characters each. Tests use a loopback mock; no real API
 is used for repository validation.
 
+#### Gateway client identification (0.3.4, in development)
+
+Every request sends `user-agent: stronghold-protocol-llm-agent` (override with `SP_LLM_USER_AGENT`, one line,
+≤ 256 characters). `SP_LLM_SESSION_HEADER` names an extra `x-…` header whose value is a 32-hex hash of the
+match, seat and knowledge version — the same for every request of one seat's match, different for another seat.
+Gateways that ask for this, such as [OpenCode Go](https://opencode.ai/docs/go/) (`x-opencode-session`), can
+then group a seat's requests as one conversation. Caller headers never replace `authorization` or the content
+headers. OpenCode Go example (its OpenAI-compatible endpoint; DeepSeek models need the account's Privacy → Regions
+set to Global; the plan is designed for coding agents and its traffic is monitored for abuse):
+`SP_LLM_BASE_URL=https://opencode.ai/inference/go/openai/v1 SP_LLM_MODEL=deepseek-v4.1-flash
+SP_LLM_SESSION_HEADER=x-opencode-session` plus the plan's key in `SP_LLM_API_KEY`.
+
 #### Thinking controls and JSON diagnostics (0.3.4, in development)
 
 `SP_LLM_THINKING=enabled|disabled` optionally sends `thinking:{type:...}`. Omitted means the provider's

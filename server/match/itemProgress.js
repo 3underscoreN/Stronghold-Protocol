@@ -1,7 +1,8 @@
 // Presentation of existing per-item counters; never advances or persists another counter.
 export function itemProgress(ps, item) {
   const rec = ps.gd.item(item.id);
-  const buff = rec?.buffs?.find(b => b.key === 'sell_char_count_gain_equip_owner_bond');
+  const buff = rec?.buffs?.find(b => b.key === 'sell_char_count_gain_equip_owner_bond'
+    || b.key === 'sell_char_count_gain_equip_owner_original');
   if (!buff) return undefined;
   const total = Math.max(1, Math.trunc(Number.isFinite(rec.params?.count) ? rec.params.count : 8));
   const count = ps.counters[`pack:${item.uid}`];

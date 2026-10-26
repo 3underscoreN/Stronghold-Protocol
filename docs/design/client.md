@@ -1075,3 +1075,10 @@ window is [ASSUMED]; damage, attack timing and targeting are unchanged.
 Skill model fallback (#786, §35.90): when facing up, a skill with an authored Front clip and only an attack fallback
 on Back uses Front through the skill clip and ending. Back-authored skills keep Back. [ASSUMED] This model choice
 is presentation inferred from the available animation roles; simulation facing and targeting do not change.
+
+### Preparation progress displays (§37.7)
+
+Commercial Packaging displays each equipment instance's existing sale count and data threshold, including first-period
+original-owner rewards. Chiave displays active refresh progress and rewards earned this round without resetting counters.
+The sidebar and 本局信息 use the watched player's effects in both preparation scouting and combat spectating; a field
+with multiple members has no inferred owner's progress. Battle displays retain the values captured at preparation end.

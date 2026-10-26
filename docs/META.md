@@ -1222,3 +1222,8 @@ The host’s pre-match `room.setAiTakeover {on}` opts a co-op room in; default o
 ### Read-only progress display (#794)
 
 Piece items may carry `progress: {current,total}`. Scouted units and battle inputs may carry `itemProgress: [{uid,id,current,total}]` for equipped items. Commercial Packaging reads the existing `pack:<uid>` counter and the concrete item threshold; display metadata does not enter simulation snapshot tuples or alter rewards.
+
+Commercial Packaging includes both `sell_char_count_gain_equip_owner_bond` (second period) and
+`sell_char_count_gain_equip_owner_original` (first period), using the same `pack:<uid>` counter and each record's
+`params.count`. The watched field's effects feed both the sidebar and 本局信息 during prep and combat; fields with
+multiple owners carry no inferred strategy progress. See [0.3.4 §37.7](history/0.3.4.md).

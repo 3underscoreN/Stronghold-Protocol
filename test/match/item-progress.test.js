@@ -4,12 +4,14 @@ import { makeMatch, give, giveItem, legalTileFor, DATA } from './harness.js';
 import { createRegistry } from '../../server/match/effectsMeta.js';
 import { Battle } from '../../server/sim/Battle.js';
 import { renderInfo } from '../../public/js/render/app/info.js';
+import { getVersionData, setData } from '../../server/data.js';
+import { setGameData } from '../../server/sim/content/support/index.js';
 
 const PACK = 'chess_item_5_07_e_a', GOLD = 'chess_item_5_07_e_b';
 const HOLDER = 'chess_char_1_01_a', FODDER = 'chess_char_1_08_a';
 const quiet = { info() {}, warn() {}, error() {} };
-function setup(t) {
-  const h = makeMatch({ mode: 'solo', seed: 17, fake: true, registry: createRegistry({ log: quiet }) }).start();
+function setup(t, data = DATA) {
+  const h = makeMatch({ data, mode: 'solo', seed: 17, fake: true, registry: createRegistry({ log: quiet }) }).start();
   t.after(() => h.m.dispose()); h.toPrep(1);
   const ps = h.ps('p_0'); ps.bandId = null; ps.funds = 50;
   const carrier = give(h.m, ps, HOLDER, 'board', legalTileFor(h.m, ps, HOLDER));
@@ -20,6 +22,32 @@ function setup(t) {
   };
   const sell = () => assert.deepEqual(h.m.handle('p_0', { t: 'g.sell', uid: give(h.m, ps, FODDER).uid }), { ok: true });
   return { h, ps, carrier, equip, sell };
+}
+
+for (const version of ['act1autochess', 'act1autochess@V1_1']) {
+  test(`${version}: original-owner packaging shows independent live 8 / 6 counters without changing rewards`, t => {
+    const data = getVersionData(version, { log: quiet });
+    setData(data); setGameData(data);
+    t.after(() => { setData(DATA); setGameData(DATA); });
+    const { h, ps, carrier, equip, sell } = setup(t, data);
+    ps.promote(carrier);
+    const a = equip('chess_item_6_10_e_a'), b = equip('chess_item_6_10_e_b');
+    assert.ok(data.items[a.id].buffs.some(buff => buff.key === 'sell_char_count_gain_equip_owner_original'));
+    const progress = uid => ps.pieceView(carrier).items.find(it => it.uid === uid).progress;
+    assert.deepEqual(progress(a.uid), { current: 0, total: 8 });
+    assert.deepEqual(progress(b.uid), { current: 0, total: 6 });
+    for (let i = 0; i < 6; i++) sell();
+    assert.deepEqual(progress(a.uid), { current: 6, total: 8 });
+    assert.deepEqual(progress(b.uid), { current: 0, total: 6 });
+    assert.ok(ps.allChess().some(p => p.uid !== carrier.uid && p.id === HOLDER), 'reward is the original operator');
+    const counters = structuredClone(ps.counters);
+    assert.deepEqual(h.m.prepFieldMeta(ps).units.find(u => u.uid === carrier.uid).itemProgress,
+      [{ uid: a.uid, id: a.id, current: 6, total: 8 }, { uid: b.uid, id: b.id, current: 0, total: 6 }]);
+    assert.deepEqual(ps.counters, counters, 'reading progress never resets the reward counters');
+    sell(); sell();
+    assert.deepEqual(progress(a.uid), { current: 0, total: 8 });
+    assert.deepEqual(progress(b.uid), { current: 2, total: 6 });
+  });
 }
 
 test('pack progress is live, per equipment, resets at the concrete 8 / 7 threshold and reaches scouting views', t => {

@@ -174,6 +174,10 @@ including host delegation, cancellation and error cleanup. Definitions do not ho
 This is a development interface, not a new gameplay policy or a client code/plugin loading mechanism.
 See [the strategy guide](../BOT_STRATEGIES.md) for the contract, registration and testing steps.
 
+The optional `botbench --layers` audit wraps only benchmark match instances and records actual banked layers,
+source hooks, spending and round snapshots ([META §6](../META.md#6-testing--tools)). It never feeds decisions or
+counts rehearsal gains. The three §37.21 procurement/refresh trials were withdrawn; legacy policy is unchanged.
+
 The opt-in `ioleta` strategy applies [ASSUMED] staged Russell procurement to Russell seats and legacy prep to other
 bands. Its seat-local plan, core-merge/reward ordering and affordable search rules are recorded in
 [§35.83](../history/0.3.2.md#3583-optional-bot-strategies-pr-742-lidong1793). Placement candidates remain independently selectable.

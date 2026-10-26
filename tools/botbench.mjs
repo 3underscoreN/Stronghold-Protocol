@@ -13,6 +13,8 @@
 //   --json F    write the raw per-match records to F (the input of --compare)
 //   --bot ID    registered strategy ID (docs/BOT_STRATEGIES.md); default legacy (SP_BOT_STRATEGY and
 //               SP_BOT_STRATEGY_SEATS are not read)
+//   --layers   include per-bond layer events, their nested sources, spending and prep/settlement snapshots in JSON;
+//              diagnostic only (timings include tracing overhead). No gameplay or RNG changes.
 //   --jobs N    run the matches in N worker threads (outcomes are identical; the timings are then inflated by the
 //               parallel load — measure decision time with --jobs 1)
 //   --band ID   solo configs only: force the opening pickBand hook (e.g. band_cannot); keep gd.bandIds() and
@@ -37,6 +39,7 @@ import { DEFAULT_VERSION } from '../shared/versions.js';
 import { performance } from 'node:perf_hooks';
 import { writeFileSync, readFileSync } from 'node:fs';
 import { Worker, isMainThread, parentPort, workerData } from 'node:worker_threads';
+import { traceLayers } from './ai/layer-trace.mjs';
 import { runMatch, strategyMetrics, aggregateStrategies } from './ai/run-match.mjs';
 import { Match } from '../server/match/Match.js';
 import { defineBotStrategy } from '../server/match/botStrategyContract.js';
@@ -92,6 +95,7 @@ async function runOne(cfg, seed) {
   if (opt.band && cfg.mode === 'solo') m.bot = defineBotStrategy({ id: m.bot.id, base: m.bot, pickBand: () => String(opt.band) });
   const rec = { config: cfg.name, botStrategy: m.bot.id, seed, stageId: m.stageId, bossId: m.bossId, preps: [], economy: [], picks: [], rounds: [], bounties: [] };
   if (toolVersion !== DEFAULT_VERSION) rec.version = toolVersion;
+  const traceSnapshot = opt.layers ? traceLayers(m, rec) : null;
   // rehearsal stepping time (Battle.step of the rehearsal fields)
   let rehMs = 0;
   const newBattle = m.newBattle.bind(m);
@@ -161,6 +165,7 @@ async function runOne(cfg, seed) {
     const key = `${m.phase}:${m.round}`;
     if (key !== last) {
       last = key;
+      if (['SETTLE', 'RESULT'].includes(m.phase)) traceSnapshot?.();
       if (m.phase === 'SETTLE' || (m.phase === 'RESULT' && (m.round === m.gd.bossRound || m.round === m.gd.hiddenRound))) {
         const row = { round: m.round, players: {} };
         for (const ps of m.order) {

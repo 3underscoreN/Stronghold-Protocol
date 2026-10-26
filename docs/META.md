@@ -1050,6 +1050,12 @@ See [BOT_STRATEGIES](BOT_STRATEGIES.md) for composition and lifecycle details.
   outcomes (wins, rounds passed, LP left, leaks per round, bounties taken / leaked and the kill-chance calibration,
   merges, board value, bond tiers, layers, elites) and its decision time per prep (wall clock and CPU, p50 / p95, the
   layout rehearsal apart); `--compare old.json new.json` prints the A/B tables (the same seeds on two builds).
+  `--layers` adds `layerTrace` to each JSON match: clamped per-bond gains with nested trait/band/item/card sources,
+  acquisition/merge identity, purchase/refresh/level spending, sales, selected cards, and per-seat prep/settlement
+  snapshots. `beforeEndPrep` is before `PlayerState.endPrep`, **after** the match's `onPrepEnd` effects; both prep
+  snapshots therefore include those gains. Combat gains are recorded only when banked at settlement, never from
+  rehearsal. The legacy trade label inspects the Node call site (`tradeOnce`) for diagnostics only. Timings with
+  tracing include its overhead. See history §37.21 for the 40-seed layer audit and withdrawn procurement trials.
 * `node tools/balance.mjs --mode multi --difficulty NORMAL` — the competent-board difficulty model (docs/BALANCE.md):
   per round leaks / LP after 联防 / clear time of representative boards against the real waves, boss damage by 150 s
   and kill time; `--tuning off` (research numbers), `--legacy-time`, `--profile weak|strong`, `--bots N`, `--json`.

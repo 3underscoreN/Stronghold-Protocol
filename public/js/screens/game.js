@@ -333,10 +333,13 @@ function MatchScreen() {
   }, [alive, !!(priv || meP)]);
   const home = homeFieldId(pub, myId);
   const watchingOther = !!watching && watching !== home && watching !== ownFieldId(myId);
-  // watching a teammate's prep board: the 本局信息 drawer shows THEIR 策略 in place of one's own (user playtest #2 item 2)
-  const scoutPid = watchingOther && field?.prep && typeof field.fieldId === 'string' && field.fieldId.startsWith('n:') ? field.fieldId.slice(2) : null;
+  // Both the sidebar and 本局信息 follow the watched player in prep and combat; shared fields have no single owner.
+  const fieldMembers = pub?.fields?.find(f => f.fieldId === field?.fieldId)?.players;
+  const scoutPid = watchingOther && field ? (field.fieldId?.startsWith('n:') ? field.fieldId.slice(2)
+    : fieldMembers?.length === 1 ? fieldMembers[0] : null) : null;
   const scoutBandId = scoutPid ? ownerBandId(pub, scoutPid) : null;
   const scoutBandOwner = scoutPid ? (players.find((p) => p.playerId === scoutPid)?.name || null) : null;
+  const viewedEffects = watchingOther && field ? (field.effects ?? null) : priv?.effects;
   const personalChoice = !spectator && alive ? normalizePersonalChoice(pub, priv, myId) : null;
   const hasPersonalChoice = !!personalChoice;
   const roomRules = useStore((s) => s.room?.content?.rules ?? null);
@@ -557,8 +560,8 @@ function MatchScreen() {
   const enteredViewRef = useRef(null);
   const pressSel = useRef(null);                         // the selected piece when the current field press began
   useEffect(() => {
-    if (showPrep) audio.stopPoolSounds();
-    return () => audio.stopPoolSounds(); // battle exit or game-screen unmount, including while the renderer loads
+    if (showPrep) audio.stopFieldSounds();
+    return () => audio.stopFieldSounds(); // battle exit or game-screen unmount, including while the renderer loads
   }, [showPrep]);
   useEffect(() => {
     // Read before a view change clears the refs. A later refresh of this same field (g.watch / reshow replaces the
@@ -1529,10 +1532,11 @@ function MatchScreen() {
   const retreatSel = useCallback(() => retreatPiece(live.current.sel?.uid), [retreatPiece]);
   const sellSel = useCallback(() => sellOwnPiece(live.current.sel?.uid), [sellOwnPiece]);
 
-  // unit clicks from the engine may only carry an id: resolve through m.field / spawn infos
+  // Resolve fresh field metadata even if a click carried its own info, so an open scout detail tracks item progress.
   const detailTarget = useMemo(() => {
-    if (detail?.kind !== 'unit' || detail.unit) return detail;
-    const u = (Array.isArray(field?.units) ? field.units : []).find((x) => x && x.id === detail.unitId);
+    if (detail?.kind !== 'unit') return detail;
+    const id = detail.unitId ?? detail.unit?.id;
+    const u = (Array.isArray(field?.units) ? field.units : []).find((x) => x && x.id === id);
     return u ? { ...detail, unit: u } : detail;
   }, [detail, field]);
   const resolved = useMemo(() => resolveDetail(detailTarget, placeCtx.pieces, { priv, backups: gd.backups }), [detailTarget, placeCtx, gd.ready, data.locale()]);
@@ -1866,7 +1870,7 @@ function MatchScreen() {
         self=${Number.isFinite(priv?.lp) ? { lp: priv.lp, pending: liveLpNow.pending, unite: liveLpNow.unite, left: liveLpNow.left } : null}
         observe=${cc ? { canObserve: (p) => observeTarget(p, pub, myId, { observing: watchingOther, ownDone: localDone }), observing: watchingOther, onBack: backHome } : null} />
 
-      <div class="gm__effects"><${EffectsList} effects=${watchingOther && field ? (field.effects ?? null) : priv?.effects} /></div>
+      <div class="gm__effects"><${EffectsList} effects=${viewedEffects} /></div>
 
       ${watchingOther && !combat ? html`<div class="gm__watching" role="status">
         <${GIcon} name="eye" /><span>${tParts('正在查看 {name} 的阵地（只读）', { name: html`<b>${watchedName}</b>` })}</span>
@@ -1917,7 +1921,7 @@ function MatchScreen() {
       </div>
 
       ${drawer ? html`<${EnemyDrawer} tab=${drawer} onTab=${setDrawer} pub=${pub} priv=${priv} onClose=${() => setDrawer(null)}
-        bandId=${scoutBandId} bandOwner=${scoutBandOwner}
+        bandId=${scoutBandId} bandOwner=${scoutBandOwner} effects=${viewedEffects}
         onEnemy=${(k, n) => setDetail({ kind: 'enemy', id: k, count: n })} onChess=${(id) => setDetail({ kind: 'chess', id, foreign: true })} />` : null}
 
       ${bondPop ? html`<${BondPopup} bondId=${bondPop.bondId} entry=${bondPop.entry} priv=${bondPop.priv} banned=${pub?.bannedChess || []} owner=${bondPop.name} ownerId=${bondPop.ownerId}

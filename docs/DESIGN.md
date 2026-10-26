@@ -152,3 +152,5 @@ Offline checks and game runtime never fetch them; derived records and the plugin
 | §37 | [history/0.3.4.md](history/0.3.4.md) | 0.3.4 — 未发布：round54 的问题修正、小功能、人机与合入的 PR |
 
 Default-off spectator AI handover (maintainer decision 2026-10-24, §35.100): [AI handover rules](history/0.3.2/ai-handover.md).
+
+0.3.3 之后面向 **0.3.4（未发布）** 的修正记录在 [§37](history/0.3.4.md)。

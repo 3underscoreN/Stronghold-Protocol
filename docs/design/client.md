@@ -37,6 +37,11 @@ play the same `bondUp` cue. A gain of several layers plays once, including gains
 bond activation cues use this same channel. State snapshots, settlement backfill and buffered field-entry events
 do not generate layer cues. Field entry, leaving the game and muting cancel playing or still-decoding layer audio.
 
+Pending generic battle sounds (leak alarms, heals, deploys and deaths without bank-pool metadata) also belong to
+their field: replacement, return to preparation and game-screen cleanup invalidate them before playback or a failed
+plugin's fallback can start. UI clicks keep their pending feedback across a field change. Sounds already playing
+retain their existing lifetime; this does not change official bank limits, pitch, delay or the remake's cooldowns.
+
 `import { createFieldView } from './render/app.js'`
 
 ```js
@@ -572,6 +577,16 @@ origin-wide Web Lock (`sp-imported-assets-v1:index`); the cache name and index J
 cooperating tabs from losing index updates. It does not lock an import's file writes or cache clearing. A browser
 without Web Locks keeps the previous sequential behaviour, without cross-tab serialization (ASSETS.md).
 
+### Waiting-room readiness sound (§37.11)
+
+In a co-op waiting room, an accepted human false-to-true ready transition in `room.state` plays `sfx.ui.ready` on
+every connected room member's client, including the sender and spectators. It uses the same manifest key as
+`g.infoReady` in the briefing and respects each listener's mute/SFX volume and browser audio unlock. Cancelling and
+readying again plays it again with no time-based cooldown. Initial room snapshots, reconnect restoration,
+repeated states, cancellation, new seats/AI additions and match start/end do not
+replay it. No protocol or match-ready sound changes. [ASSUMED] This shared-room feedback policy follows the
+2026-10-25 player report; no official multiplayer recording was independently checked.
+
 ### Skill-mode sound and delayed models (§28.17, §28.22)
 
 The audio manifest can carry `attacks` / `hits` plus independent `attackMix` / `hitMix` by skill index. Only an active
@@ -596,6 +611,10 @@ subscriber and retains only the latest request per bank/unit-role; at most 64 un
 across fields, so repeated field changes cannot grow a stalled promise's handler list. Undecoded requests older than
 2500 real ms are discarded when decoding finishes. Field replacement, returning to prep and game-screen cleanup
 invalidate pending callbacks with a field generation token, cancel delay timers and stop playing pool sources.
+Pending generic battle cues use that same field generation, including their plugin fallback. The field lifecycle's
+`stopFieldSounds()` also invalidates pending operator lines, releases their voice gate and fades out the current line;
+it releases prep landing voices immediately and fades any playing landing out, without counting cleanup as takeover.
+UI feedback, BGM and scoped bond cues retain their own lifecycles, so a new prep layer cue survives battle cleanup.
 These queue bounds, expiry and lifecycle/scheduling choices are web-client guards [ASSUMED]. A zero bank limit means no
 bank cap, still subject to the global budget. Missing pool metadata keeps the legacy two-copy behavior; sparse/custom
 banks default to cap 2, no takeover, pitch 1 and delay 0. A cosmetic replacement absent from the bank's file list uses
@@ -1082,3 +1101,10 @@ permits pioneer skill gains ([ASSUMED] scope approved in #657). SP permits extra
 excluding time, ordinary attack/hurt and initial SP. Full/locked bars and zero receipts show nothing. White COST,
 red deductions and cyan SP follow the issue examples; exact colours, 80% numeric size, centred placement, 0.9 s
 lifetime and up to two decimals are [ASSUMED]. Receipts do not merge. Revision: [§37.3](../history/0.3.4.md).
+
+### Preparation progress displays (§37.13)
+
+Commercial Packaging displays each equipment instance's existing sale count and data threshold, including first-period
+original-owner rewards. Chiave displays active refresh progress and rewards earned this round without resetting counters.
+The sidebar and 本局信息 use the watched player's effects in both preparation scouting and combat spectating; a field
+with multiple members has no inferred owner's progress. Battle displays retain the values captured at preparation end.

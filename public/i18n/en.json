@@ -556,6 +556,9 @@
   "暂无敌方情报": "No enemy intel yet",
   "本局禁用干员情况": "Banned Operators this match",
   "我的策略": "My Strategy",
+  "主动刷新": "Manual refreshes",
+  "本回合获得": "Rewards this round",
+  "本回合已满": "Round limit reached",
   "战场：": "Battlefield:",
   "该盟约中被禁用的干员数": "Banned Operators in this Alliance",
   "本局没有禁用盟约": "No Alliances banned this match",
@@ -2394,5 +2397,6 @@
   "更新说明加载失败，请稍后重试。": "Could not load release notes. Please try again later.",
   "适度缩小": "Moderate",
   "完全收起": "Fully collapse",
-  "拖动及选择朝向时：关闭保持原视角；适度缩小保留七成大小的商店，镜头适度放大；完全收起使用原有放大视角。结束后恢复原状。": "While dragging or choosing a facing: Off keeps the view; Moderate keeps the shop at 70% with a smaller zoom; Fully collapse uses the original zoom. The view returns afterwards."
+  "拖动及选择朝向时：关闭保持原视角；适度缩小保留七成大小的商店，镜头适度放大；完全收起使用原有放大视角。结束后恢复原状。": "While dragging or choosing a facing: Off keeps the view; Moderate keeps the shop at 70% with a smaller zoom; Fully collapse uses the original zoom. The view returns afterwards.",
+  "出售干员": "Operators sold"
 }

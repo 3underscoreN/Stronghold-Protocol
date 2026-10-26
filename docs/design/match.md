@@ -153,18 +153,22 @@ Per match: pick stage (weighted among the mode's `config.modes[m].stages`, weigh
 ### 6.6 AI players (bot.js)
 
 Match selects a trusted server-side implementation through `botStrategies.js`: `opts.botStrategy` (registered ID
-or definition object), then `SP_BOT_STRATEGY`, then `legacy`. The registry contains the unchanged
+or definition object), then `SP_BOT_STRATEGY`, then `legacy`. `opts.botStrategySeats`, then `SP_BOT_STRATEGY_SEATS`
+(`seat:id,…`, seats 0–3), override single seats; a seat without one plays the match's selection. The registry contains the unchanged
 `bot.js` adapter, the explicitly configured `external` adapter and the opt-in `ioleta`, `adaptive` and `ioleta-adaptive` strategies. `botStrategyContract.js` defines immutable strategy objects and pure registries; omitted hooks
 inherit an existing strategy (legacy by default). Invalid hooks, unknown IDs and duplicate registrations fail early.
 Registry additions do not reweight opening choices or consume RNG.
 An unset or empty `SP_BOT_STRATEGY` uses the original bot without a programmatic override. `startServer()` validates
-the environment selection before loading data or accepting connections; an unknown ID prevents startup with a
-diagnostic naming the variable, rejected value, available IDs and how to restore the default.
-Test input journals record the resolved strategy ID; replays use it explicitly, defaulting older records to `legacy`
-independently of the replay host's environment. Prep generators and rehearsal jobs retain journalled slice counts.
-The selected implementation does not change draft order or give any AI seat priority.
+both environment selections before loading data or accepting connections; an unknown ID or a malformed seat entry
+prevents startup with a diagnostic naming the variable, rejected value, available IDs and how to restore the default.
+A seat override applies to the seat number: an AI seat and a human under AI takeover there both play it. A match
+whose default or any seat selects `external` has one external host; only external seats ask it, still narrowed by
+`SP_EXTERNAL_AI_SEATS`, and they fall back to legacy as before.
+Test input journals record the resolved strategy ID and any seat overrides (`botStrategySeats`); replays use them
+explicitly, defaulting older records to `legacy` without overrides, independently of the replay host's environment. Prep generators and rehearsal jobs retain journalled slice counts.
+The selected implementations do not change draft order or give any AI seat priority.
 
-The selected implementation handles band/card drafts, personal bounty choices, sliced prep begin/end and benchmark
+A seat's implementation (its override, else the match's) handles that seat's band/card drafts, personal bounty choices, sliced prep begin/end and benchmark
 bounty estimates. Prep hooks return synchronous iterators and preserve the existing rehearsal job protocol,
 including host delegation, cancellation and error cleanup. Definitions do not hold mutable per-room/player state.
 This is a development interface, not a new gameplay policy or a client code/plugin loading mechanism.

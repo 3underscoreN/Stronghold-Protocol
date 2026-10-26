@@ -379,11 +379,16 @@ registries; it rejects duplicate IDs and malformed hooks instead of altering oth
 An unset or empty `SP_BOT_STRATEGY` uses the original bot when no explicit option is supplied. `startServer()` validates the environment
 selection before data loading or listening; an invalid ID prevents startup with a diagnostic naming the variable,
 rejected value, available IDs and how to unset it to restore the default.
-The test input journal stores the resolved `botStrategy` ID. Replay uses the recorded ID (older records: `legacy`),
+`SP_BOT_STRATEGY_SEATS` / `opts.botStrategySeats` (`seat:id,…`, seats 0–3, registered IDs) override single seats;
+`Match.botFor(ps)` returns the seat's override, else the match's strategy, for an AI seat and a human under AI
+takeover alike. `startServer()` validates the variable the same way. An external default or seat creates one
+external host; only external seats ask it, still narrowed by `SP_EXTERNAL_AI_SEATS` (#816 P1).
+The test input journal stores the resolved `botStrategy` ID and, with overrides, `botStrategySeats` (seat → ID).
+Replay uses the recorded IDs (older records: `legacy`, no overrides),
 never the replay host's environment, and preserves `testSlice` counts for prep generators and rehearsal jobs.
 Band draft order is unchanged; selecting an AI implementation grants no seat priority.
 
-Band/common-card/private-bounty picks and both sliced prep stages use the selected object. Prep retains its existing
+Band/common-card/private-bounty picks and both sliced prep stages use the seat's selected object. Prep retains its existing
 iterator, rehearsal/delegation and deadline protocol. A custom hook failing before it creates an iterator still
 enters cleanup. `tools/matchrun.mjs --bot ID` and `tools/botbench.mjs --bot ID` select registered implementations
 explicitly; botbench records the ID and calls its bounty estimator. Its solo band override leaves the real band
@@ -1001,9 +1006,14 @@ round was over. The official 1 s `broadcastBeginDelay` is not modelled.
 
 ---
 
+### Read-only strategy progress (#794)
+
+Strategy effect entries may carry `progress: {current,total}` and `roundProgress: {current,total}`. Chiave derives these from existing refresh and lazy round counters; views never advance or reset them. `battleInput.bandProgress` captures the preparation values for a watched battlefield.
+
 ## 6. Testing & tools
 
-`opts.botStrategy` / `SP_BOT_STRATEGY` select the registered AI per match, default `legacy`.
+`opts.botStrategy` / `SP_BOT_STRATEGY` select the registered AI per match, default `legacy`;
+`opts.botStrategySeats` / `SP_BOT_STRATEGY_SEATS` override single seats.
 `ioleta` supplies Russell procurement through the shared prep pipeline; its state is
 `player.botStrategyState.ioleta.plan`. The HTTP server rejects unknown environment IDs at startup.
 Journal replay persists the registered ID and reconstructs the plan through deterministic prep inputs.
@@ -1207,3 +1217,13 @@ and replay records keep full frames.
 ### Optional spectator AI handover (§35.100, PR #691)
 
 The host’s pre-match `room.setAiTakeover {on}` opts a co-op room in; default off. Only default-version vanilla PREP supports requests. Online, non-autoplay humans throughout the room vote by strict majority; if none qualify, the online host decides. The 30-second request is bound to match/round/electorate and is cancelled on membership/eligibility/phase changes. A successful handover preserves the AI seat’s resources and rebinds the spectator token, cancels that seat’s old rehearsal, and resynchronizes its unchanged delta capability. Inherited records retain `aiTakeoverRound` and previous AI metrics but grant no personal aggregates, titles, trophies or reward. These are maintainer-approved remake-only rules [ASSUMED]; see [network](design/network.md) and [handover revision](history/0.3.2/ai-handover.md).
+
+
+### Read-only progress display (#794)
+
+Piece items may carry `progress: {current,total}`. Scouted units and battle inputs may carry `itemProgress: [{uid,id,current,total}]` for equipped items. Commercial Packaging reads the existing `pack:<uid>` counter and the concrete item threshold; display metadata does not enter simulation snapshot tuples or alter rewards.
+
+Commercial Packaging includes both `sell_char_count_gain_equip_owner_bond` (second period) and
+`sell_char_count_gain_equip_owner_original` (first period), using the same `pack:<uid>` counter and each record's
+`params.count`. The watched field's effects feed both the sidebar and 本局信息 during prep and combat; fields with
+multiple owners carry no inferred strategy progress. See [0.3.4 §37.13](history/0.3.4.md).

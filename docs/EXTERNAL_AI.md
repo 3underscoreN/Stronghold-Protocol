@@ -472,7 +472,7 @@ from this run.
 Adaptive effort is an explicit next experiment: keep default when the budget permits, use low only for short
 co-op budgets. It has no real-match result yet. This is a descriptive small sample, not a win-rate or causal
 claim; outages and sequential service conditions affect latency. The release target remains unmet. See
-[§37.3](history/0.3.4.md#373-bounded-llm-rate-limit-retries-round54-cycle-5) for counts, costs, selection and limits.
+[§37.23](history/0.3.4.md#373-bounded-llm-rate-limit-retries-round54-cycle-5) for counts, costs, selection and limits.
 
 #### Adaptive effort (experimental opt-in, cycle 5)
 
@@ -528,7 +528,7 @@ These are paid commands, not repository tests. The cycle-5 local harness additio
 provider `usage.opencode.list_cost`, and stopped new requests at a reported $8 total or a repeated fast transport
 failure. That harness is not part of the shipped adapter: the commands above do not enforce a money budget.
 After machine/network outages, only affected data was replaced: solo seed 7 at jobs 1 on both sides and the
-interrupted default co-op batch. Ordinary slow/invalid replies stayed in the comparison. See history §37.3.
+interrupted default co-op batch. Ordinary slow/invalid replies stayed in the comparison. See history §37.23.
 
 ### Committed round plans and private reasoning (§35.11)
 

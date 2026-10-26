@@ -226,7 +226,7 @@ export function createLLMAgent(env = process.env, request = httpDecision) {
     const strategy = strategyCandidates(pack.playbook, o.digest, history?.previousPlan);
     const shown = modelStrategy(strategy, o.context.kind);
     const choices = compactChoices(o.digest);
-    // §37.3 [ASSUMED] Opt-in policy: preserve default thinking in solo and ample-budget co-op; below 90 s
+    // §37.23 [ASSUMED] Opt-in policy: preserve default thinking in solo and ample-budget co-op; below 90 s
     // choose low. This threshold is experimental, not a guarantee of timely or stronger plans. Use the host's
     // clock pair (bench clocks are virtual), not Date.now(); unknown/expired timing keeps the provider default.
     // Resolve per decision, never mutate shared configuration; existing retries keep this choice.

@@ -556,8 +556,8 @@ function MatchScreen() {
   const enteredViewRef = useRef(null);
   const pressSel = useRef(null);                         // the selected piece when the current field press began
   useEffect(() => {
-    if (showPrep) audio.stopPoolSounds();
-    return () => audio.stopPoolSounds(); // battle exit or game-screen unmount, including while the renderer loads
+    if (showPrep) audio.stopFieldSounds();
+    return () => audio.stopFieldSounds(); // battle exit or game-screen unmount, including while the renderer loads
   }, [showPrep]);
   useEffect(() => {
     // Read before a view change clears the refs. A later refresh of this same field (g.watch / reshow replaces the

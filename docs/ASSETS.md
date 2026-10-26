@@ -543,6 +543,10 @@ remake anti-spam rules are specified in [design/client.md](design/client.md#skil
 finishes after field replacement, return to preparation or screen cleanup releases its voice without starting the
 old cue or its plugin fallback. UI feedback is independent of this field generation.
 
+`stopFieldSounds()` is shared by field replacement and the game screen's cleanup: it also invalidates operator voice
+downloads and frees their channel. Playing operator lines fade out using their existing fade. Scoped bond cues and
+BGM keep their own lifecycle.
+
 ### The `Spine` object
 
 ```js

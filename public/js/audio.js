@@ -1290,6 +1290,12 @@ export class AudioManager {
     for (const voices of this.poolVoices.values()) for (const voice of [...voices]) voice.stop();
   }
 
+  /** End the field's sounds, including operator lines still loading. UI/BGM/bond cues are separate. */
+  stopFieldSounds() {
+    this.stopPoolSounds();
+    this._stopVoice();
+  }
+
   /**
    * UI sound by name (sfx.ui keys). Unknown names are ignored.
    * @param {string} name
@@ -1489,7 +1495,7 @@ export class AudioManager {
 
   /** Reset the unit map for a new field (m.field.units = UnitInfo[]). */
   setFieldUnits(units) {
-    this.stopPoolSounds();
+    this.stopFieldSounds();
     this.stopBondCue();
     this.units.clear();
     // unit ids belong to one battle: a cast still held for a unit of the field left must not sound for a unit of the new
@@ -1499,7 +1505,7 @@ export class AudioManager {
     this.consumed.clear();
     // a new field is a new battle: the first operator deployed says 行动出发 again and no cooldown carries over
     this.startVoiceDone = false;
-    try { this.voiceGate.reset(); this._stopVoice(); } catch { /* ignore */ }
+    this.voiceGate.reset();
     for (const u of Array.isArray(units) ? units : []) this._track(u);
   }
 

@@ -593,7 +593,9 @@ subscriber and retains only the latest request per bank/unit-role; at most 64 un
 across fields, so repeated field changes cannot grow a stalled promise's handler list. Undecoded requests older than
 2500 real ms are discarded when decoding finishes. Field replacement, returning to prep and game-screen cleanup
 invalidate pending callbacks with a field generation token, cancel delay timers and stop playing pool sources.
-Pending generic battle cues use that same field generation, including their plugin fallback.
+Pending generic battle cues use that same field generation, including their plugin fallback. The field lifecycle's
+`stopFieldSounds()` also invalidates pending operator lines, releases their voice gate and fades out the current line.
+UI feedback, BGM and scoped bond cues retain their own lifecycles, so a new prep layer cue survives battle cleanup.
 These queue bounds, expiry and lifecycle/scheduling choices are web-client guards [ASSUMED]. A zero bank limit means no
 bank cap, still subject to the global budget. Missing pool metadata keeps the legacy two-copy behavior; sparse/custom
 banks default to cap 2, no takeover, pitch 1 and delay 0. A cosmetic replacement absent from the bank's file list uses

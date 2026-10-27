@@ -7,11 +7,13 @@ export const actionList = o => o.digest.actions.map(a => `${a.id}: ${a.text} ${j
 const num = n => n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n);
 const RAW = 'Raw intents (zero-based): buy {"t":"g.buy","slot":S}; bench/withdraw {"t":"g.move","uid":U,"to":{"area":"hand","idx":I}} '
   + '(I = the Hand slot number; an occupied slot swaps); place/move {"t":"g.move","uid":U,"to":{"area":"board","row":R,"col":C},"dir":"UP"} '
-  + '(UP = +row; an occupied tile swaps); equip {"t":"g.equip","itemUid":I,"targetUid":U}; sell {"t":"g.sell","uid":U}.';
+  + '(UP = +row; an occupied tile swaps); equip {"t":"g.equip","itemUid":I,"targetUid":U} (items destroyed on equip have no '
+  + 'equip shortcut: use this); sell {"t":"g.sell","uid":U}.';
 
 // §37.29 [ASSUMED] The own field with the highest row on top (UP = +row): ground routes as arrows toward the objective,
 // flyer lines as ~, deploy tiles . (ground) / H (high ground), own board pieces 1-9 then letters (no H).
 const CODES = '123456789ABCDEFGIJKLMNOPQRSTUVWXYZ';
+const DIRS = ['RIGHT', 'UP', 'DOWN', 'LEFT']; // the digest's per-tile order (aiDigest.js)
 const role = p => p.class ? ` [${[p.class, ...['air', 'block', 'sustain'].filter(k => p.caps?.[k])].join(' ')}]` : '';
 function mapLines(d) {
   const g = d.geometry, key = (r, c) => `${r},${c}`, cells = new Map(), marks = new Map();
@@ -113,9 +115,10 @@ export function observationMarkdown(o, pack, n) {
   for (const a of d.actions) {
     const i = a.intent;
     if (i.t === 'g.move' && i.to.area === 'board') {
-      const key = `${i.uid}@${i.to.row},${i.to.col}`;
-      if (!moves.has(key)) moves.set(key, []);
-      moves.get(key).push(`${a.id}=${i.dir}`);
+      if (!moves.has(i.uid)) moves.set(i.uid, new Map());
+      const tile = `${i.to.row},${i.to.col}`, tiles = moves.get(i.uid);
+      if (!tiles.has(tile)) tiles.set(tile, []);
+      tiles.get(tile).push({ n: Number(a.id.slice(1)), dir: i.dir });
     } else if (i.t === 'g.move') { benchIdx = i.to.idx; grouped.bench.push(`${a.id}=${i.uid} ${who.get(i.uid) || ''}`.trim()); }
     else if (i.t === 'g.equip') {
       if (!equips.has(i.itemUid)) equips.set(i.itemUid, []);
@@ -132,10 +135,16 @@ export function observationMarkdown(o, pack, n) {
   if (grouped.destroy.length) lines.push(`destroy: ${grouped.destroy.join(', ')}`);
   if (grouped.unequip.length) lines.push(`unequip: ${grouped.unequip.join(', ')}`);
   if (ready) lines.push(ready);
-  for (const [key, ids] of moves) lines.push(`place ${key}: ${ids.join(' ')}`);
+  // §37.31 (co-op agents: 400–800 IDs cut the page): one line per piece, a tile's RIGHT id with UP/DOWN/LEFT the next three
+  if (moves.size) lines.push('place: tile=aN means aN RIGHT, aN+1 UP, aN+2 DOWN, aN+3 LEFT; a tile with letters lists only those');
+  for (const [uid, tiles] of moves) {
+    const cells = [...tiles].map(([tile, ids]) => ids.length === 4 && ids.every((x, k) => x.dir === DIRS[k] && x.n === ids[0].n + k)
+      ? `${tile}=a${ids[0].n}` : `${tile}=${ids.map(x => `a${x.n}${x.dir[0]}`).join('/')}`);
+    lines.push(`place ${uid} ${who.get(uid) || ''}: ${cells.join(' ')}`);
+  }
   // [ASSUMED] ~3–4k-token target: 9000 characters, with full lossless actions/request beside the compact page.
   // Keep header, feedback and all state ahead of the potentially huge placement list.
-  const footer = `\nAnswer act-${n}.json: ["a1"] or [{"t":"g.buy","slot":0}]. Prep {"done":true} submits Ready through the validator.\n${RAW}\n`
+  const footer = `\nAnswer act-${n}.json: ["a1"] or [{"t":"g.buy","slot":0}]. Prep {"done":true} (alone, or last in a list) submits Ready through the validator.\n${RAW}\n`
     + `Full actions: obs-${n}.actions.md; raw digest: obs-${n}.json; full request: obs-${n}.request.json.\n`;
   let out = '';
   for (const line of lines) {

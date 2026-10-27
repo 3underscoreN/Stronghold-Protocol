@@ -17,9 +17,13 @@ export const readJSON = file => JSON.parse(readFileSync(file, 'utf8'));
 export const seatDir = (dir, mode, seat) => mode === 'solo' ? dir : path.join(dir, `seat-${seat}`);
 
 export function actionReply(value, context) {
-  const done = value && !Array.isArray(value) && Object.keys(value).length === 1 && value.done === true;
-  if (done && context.kind !== 'prep') throw new Error('{"done":true} is only for prep; choose a draft/offer action');
-  const intents = done ? [{ t: 'g.ready', ready: true }] : value;
+  const isDone = x => x && typeof x === 'object' && !Array.isArray(x) && Object.keys(x).length === 1 && x.done === true;
+  const done = isDone(value);
+  // §37.31: a batch may end with {"done":true} (co-op agents wrote it into lists and got BAD_MSG)
+  const tail = Array.isArray(value) && value.length > 0 && isDone(value[value.length - 1]);
+  if ((done || tail) && context.kind !== 'prep') throw new Error('{"done":true} is only for prep; choose a draft/offer action');
+  if (Array.isArray(value) && value.slice(0, -1).some(isDone)) throw new Error('{"done":true} may only be the last entry');
+  const intents = done ? [{ t: 'g.ready', ready: true }] : tail ? [...value.slice(0, -1), { t: 'g.ready', ready: true }] : value;
   if (!Array.isArray(intents) || !intents.length || intents.length > context.remaining) {
     throw new Error(`Expected a nonempty array of at most ${context.remaining} intents/shortcuts, or {"done":true}`);
   }

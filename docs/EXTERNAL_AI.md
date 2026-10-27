@@ -111,22 +111,26 @@ decides exactly as for a human: prep readies with the current board (temp resolv
 at random), a band turn takes the highlighted strategy (`g.bandFocus`) or the default, a card turn a random card, an
 offer its timeout pick. A late answer is ignored and the next observation shows `TIMEOUT` with `fallback: false`. An
 invalid reply produces a fresh observation with `EXTERNAL_ERROR` while the window lasts (at most three in a row); the
-seat is never switched to legacy. A newer request cancels that seat's old file waiter; stale files and another seat's
-files never answer it.
+seat is never switched to legacy. §37.31: an untimed window (untimed solo, a lone human's co-op) has no timer to hand
+over to, so a used-up intent budget starts a fresh observation with a new budget, and only three broken replies in a
+row let the built-in bot finish that one decision (`fallback: true` in the next observation; the seat stays manual).
+A newer request cancels that seat's old file waiter; stale files and another seat's files never answer it.
 
 Solo uses botbench's virtual scheduler and waits for file IO. It selects the existing `soloUnlimited` option
 for historical versions too. `--version act1autochess --difficulty HARD` (or another supported version/difficulty pair) loads that version
 before the match. Historical versions do not offer ABYSS; unsupported combinations fail before creating session files.
 `SP_EXTERNAL_AI_MANUAL_WAIT=1` / explicit `externalAI.manualWait: true` is a dev-only, direct-mode switch
-that removes the host and transport decision timeout **only in untimed solo windows**, represented by
-`context.deadline: 0`. Timed windows and all co-op matches keep their phase timers with the whole window and no bot
+that removes the host and transport decision timeout **only in untimed windows** (untimed solo, a lone human's
+co-op), represented by `context.deadline: 0`. Timed windows and all co-op matches keep their phase timers with the whole window and no bot
 fallback (above). The launcher sets this option explicitly. The knowledge handshake remains bounded. Abort, phase validity and disposal still apply.
 Release packages ignore this setting with the other `SP_EXTERNAL_AI_*` variables; the unchanged
 `LLM_RELEASE_EXCLUDE` / `tools/package.mjs` gate excludes all of `tools/ai/`, including these tools.
 
 Each seat gets compact `obs-N.md` (roughly a 3–4k-token target, capped at 9000 characters), the exact raw
 `digest` in `obs-N.json`, the full wire observation in `obs-N.request.json`, and every shortcut with its
-intent in `obs-N.actions.md`. Large placement lists overflow into these companion files, explicitly marked.
+intent in `obs-N.actions.md`. Placements are one line per piece (`tile=aN`: aN faces RIGHT, aN+1 UP, aN+2 DOWN,
+aN+3 LEFT; letters mark partial lists), so pages stay under the cap (§37.31); anything cut is explicitly marked. A
+batch may end with `{"done":true}`, which becomes Ready.
 `knowledge.json` holds the public catalogue and effects. The compact page includes economy, owned pieces and
 equipment, bond counts/thresholds/layers and short effect excerpts, band progress exposed by the human view,
 public enemy gates/fliers, choices, teammate public boards, and accepted/rejected intents. Gate names describe
@@ -439,7 +443,9 @@ The saved mapping goes through the same C2S and human validation, so a previousl
 can still fail after another action/seat changes the state. Unknown IDs yield `BAD_MSG` and consume budget.
 A buy or reward ID also stands for the operator/item its slot showed: when an earlier action of the same reply (a
 refresh, a level-up, a new reward offer) has put something else in that slot, the ID fails with `STALE_ACTION`
-(the detail names both) instead of buying the newcomer. Raw `g.buy`/`g.reward` intents carry no such check.
+(the detail names both) instead of buying the newcomer. A reward ID is also bound to the offer it came from: once
+that offer was taken, the next queued offer is another card even when its slot shows the same operator (§37.31).
+Raw `g.buy`/`g.reward` intents carry no such check.
 
 §37.29 [ASSUMED] Both modes also carry `digest.geometry.routes` (prep only): the round's routes over the own field as the
 built-in placement model traces them from the preview's gates and the map's roads, `[{fly, tiles: [[row, col], …]}]`

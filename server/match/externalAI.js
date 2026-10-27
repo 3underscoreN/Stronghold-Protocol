@@ -81,6 +81,10 @@ function slotExpectations(observation) {
 function staleShortcut(job, ps, action) {
   if (typeof action !== 'string' || !job.expect?.has(action)) return null;
   const intent = job.actions.get(action), want = job.expect.get(action);
+  // a taken reward shifts the queue: the next offer is another card even when its slot shows the same operator
+  if (intent.t === 'g.reward' && (ps.offers?.[0] ?? null) !== job.rewardOffer) {
+    return { error: 'STALE_ACTION', detail: `${action} was for ${want} in an offer that is no longer the current one` };
+  }
   const now = (intent.t === 'g.buy' ? ps.shop.slots[intent.slot] : ps.offers[0]?.slots[intent.idx])?.id ?? null;
   return now === want ? null : { error: 'STALE_ACTION', detail: `${action} was for ${want}; that slot now holds ${now ?? 'nothing'}` };
 }
@@ -135,21 +139,26 @@ export class ExternalAI {
     const now = m.sched.now();
     const phaseDeadline = decision.deadline ?? m.deadline;
     // [ASSUMED] Reserve half the remaining phase for legacy; untimed phases still have the adapter's own cap.
-    // §37.26 [ASSUMED]: the dev manual seat may wait indefinitely in untimed solo windows.
+    // §37.26 [ASSUMED]: the dev manual seat may wait indefinitely in an untimed window (untimed solo, a lone human's co-op).
     // §37.30 [ASSUMED]: a timed manual window (co-op, timed solo versions) gets the whole remaining phase or turn, and
     // the built-in bot never plays a manual seat: an expired window is left to the phase timer as for a human.
-    const untimed = this.config.manualWait && m.isSolo && !(phaseDeadline > 0);
+    const untimed = this.config.manualWait && !(phaseDeadline > 0);
     const share = this.config.manualWait ? 1 : 2;
     const budget = untimed ? Infinity : Math.max(0, Math.min(this.config.timeoutMs, phaseDeadline > 0 ? (phaseDeadline - now) / share : Infinity));
     if (budget <= 0) return this.config.manualWait;
     if (this.config.mode === 'plan' && decision.kind === 'prep') { state.prepRound = m.round; state.plan = carryPlan(state.acceptedPlan?.plan); }
     const job = { ...decision, key, ps, state, used: 0, deadline: untimed ? 0 : now + budget, id: null, controller: null, timer: null };
-    if (!untimed) {
-      job.timer = m.later(budget, () => this.fail(job, 'timeout'));
-      if (!this.replay) job.wallTimer = setTimeout(() => this.m.externalReply(job.id, null, 'timeout'), budget);
-    }
+    this.arm(job);
     this.request(job);
     return true;
+  }
+
+  /** The decision window's timers (none in an untimed window); re-armed when a manual seat is asked again. */
+  arm(job) {
+    const left = job.deadline - this.m.sched.now();
+    if (!(job.deadline > 0) || left <= 0) return;
+    job.timer = this.m.later(left, () => this.fail(job, 'timeout'));
+    if (!this.replay) job.wallTimer = setTimeout(() => this.m.externalReply(job.id, null, 'timeout'), left);
   }
 
   active(job) { return !this.m.disposed && !this.m.ended && job.ps.alive && job.ps.botControlled && job.valid(); }
@@ -166,6 +175,7 @@ export class ExternalAI {
     observation.context.mode = this.config.mode;
     job.actions = new Map(observation.digest.actions.map(a => [a.id, a.intent]));
     job.expect = slotExpectations(observation);
+    job.rewardOffer = job.ps.offers?.[0] ?? null;
     if (this.replay) { job.state.results = []; return; }
     job.controller = new AbortController();
     job.state.results = [];
@@ -196,7 +206,8 @@ export class ExternalAI {
     // §35.11: only completed, own-seat actions/results a human can observe. No inference from missing pieces.
     const state = this.states.get(ps?.playerId);
     if (!state || state.disabled || ev.preview) return;
-    if (hook === 'onBattleStart') { state.gates = gatesOf(ev.spawns); return; }
+    // a helper's 联防 battle starts after its own one: keep the own wave's gates for that battle's report
+    if (hook === 'onBattleStart') { if (ev.kind !== 'unite') state.gates = gatesOf(ev.spawns); return; }
     if (hook === 'onBattleResult') {
       state.battle = battleReport(this.m.round, ps, ev, state.gates);
       if (this.config.mode === 'plan') state.lastBattle = { round: this.m.round, lp: ps.lp, lpLoss: ev.lpLoss,
@@ -243,7 +254,7 @@ export class ExternalAI {
   }
 
   send(observation, signal) {
-    const timeoutMs = observation.context?.deadline === 0 && this.config.manualWait && this.m.isSolo ? 0 : this.config.timeoutMs;
+    const timeoutMs = observation.context?.deadline === 0 && this.config.manualWait ? 0 : this.config.timeoutMs;
     return this.transport ? this.transport.request(observation, signal, { timeoutMs })
       : httpDecision({ ...this.config, timeoutMs }, observation, signal);
   }
@@ -283,6 +294,7 @@ export class ExternalAI {
     }
     if (!validAIReply(reply, id, this.config.maxIntents - job.used)) { this.fail(job); return; }
     const { state, ps } = job;
+    if (this.config.manualWait) state.failures = 0; // a manual seat's broken replies count only in a row
     let completed = false;
     for (const action of reply.intents) {
       const intent = typeof action === 'string' ? job.actions.get(action) ?? null : action;
@@ -332,15 +344,29 @@ export class ExternalAI {
     job.fallback();
   }
 
-  // §37.30 [ASSUMED] A manual seat is never played by the built-in bot. A window that ends leaves the seat to the phase
-  // timer exactly as for a human (prep: Ready with the current board; drafts and offers: their timeout pick). A broken
-  // reply asks again while the window lasts, at most failureLimit times in a row; the seat is never switched to legacy.
+  // §37.30 [ASSUMED] A manual seat is never played by the built-in bot while it answers. A timed window that ends leaves the
+  // seat to the phase timer exactly as for a human (prep: Ready with the current board; drafts and offers: their timeout
+  // pick); a broken reply is asked again while the window lasts, at most failureLimit times in a row. An untimed window
+  // has no timer to hand over to (Grok review): a used-up intent budget starts a fresh observation, and only failureLimit
+  // broken replies in a row let the built-in bot finish that one decision. The seat is never switched to legacy.
   manualFail(job, reason, active) {
-    const again = reason !== 'timeout' && active && job.used < this.config.maxIntents && ++job.state.failures < this.config.failureLimit;
-    job.state.results.push({ intent: null, error: reason === 'timeout' ? 'TIMEOUT' : 'EXTERNAL_ERROR', fallback: false,
-      detail: again ? `Decision ${job.id}: invalid reply, asking again` : `Decision ${job.id} ended; the phase timer decides as for a human (no bot fallback)` });
+    const timed = job.deadline > 0, capped = job.used >= this.config.maxIntents;
+    const broken = reason !== 'timeout' && !capped && ++job.state.failures >= this.config.failureLimit;
+    let again = false, bot = false, detail;
+    if (!active || (timed && (reason === 'timeout' || capped || broken))) {
+      detail = `Decision ${job.id} ended; the phase timer decides as for a human (no bot fallback)`;
+    } else if (!timed && broken) {
+      bot = true;
+      detail = `Decision ${job.id}: ${this.config.failureLimit} broken replies in a row; the built-in bot finished this untimed decision (the seat stays manual)`;
+    } else {
+      again = true;
+      detail = !timed && capped ? `Decision ${job.id}: intent budget used up; a fresh observation with a new budget` : `Decision ${job.id}: invalid reply, asking again`;
+      if (!timed && capped) job.used = 0;
+    }
+    job.state.results.push({ intent: null, error: reason === 'timeout' ? 'TIMEOUT' : 'EXTERNAL_ERROR', fallback: bot, detail });
     if (job.state.results.length > this.config.maxIntents) job.state.results.shift();
-    if (again) this.request(job);
+    if (again) { this.request(job); this.arm(job); }
+    if (bot) { job.state.failures = 0; this.metric(job, 'fallbacks'); job.fallback(); }
   }
 
   drop(job) {

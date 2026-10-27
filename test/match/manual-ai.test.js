@@ -77,6 +77,39 @@ test('a silent manual co-op seat keeps its own board through the prep timer; a b
   assert.equal(h.m.externalAI.states.get(ps.playerId).disabled, false);
 });
 
+test('an untimed manual window never dead-ends: three broken replies let the bot finish only that decision, a used-up budget asks again', t => {
+  const h = makeMatch({ mode: 'solo', fake: true, seats: seats.slice(0, 1), botStrategy: 'external', externalReplay: true,
+    externalAI: { manualWait: true, timeoutMs: 300000, failureLimit: 3, maxIntents: 2 } });
+  t.after(() => h.m.dispose());
+  h.start(); h.run(() => !!pending(h.m));
+  const ps = h.m.order[0], state = () => h.m.externalAI.states.get(ps.playerId);
+  for (let i = 0; i < 3; i++) { const j = pending(h.m); assert.equal(j.deadline, 0); h.m.externalReply(j.id, null, true); }
+  assert.ok(ps.bandId, 'the built-in bot finished this one untimed decision');
+  assert.equal(state().disabled, false);
+  assert.ok(state().results.some(r => r.fallback === true && /finished this untimed decision \(the seat stays manual\)/.test(r.detail)));
+  assert.ok(h.run(() => pending(h.m)?.kind === 'prep'), 'the next decision is the seat\'s again');
+  const j = pending(h.m), first = j.id;
+  h.m.externalReply(first, { v: 'sp-ai/1', id: first, intents: [{ t: 'g.freeze' }, { t: 'g.freeze' }], done: false }, false);
+  const again = pending(h.m);
+  assert.ok(again && again.id !== first && again.used === 0, 'a fresh observation with a new intent budget');
+  assert.equal(ps.ready, false);
+  h.sched.advance(600000);
+  assert.equal(pending(h.m), again, 'still waiting for the seat');
+});
+
+test('a lone human\'s co-op has untimed windows: its manual teammate is not timed out either', t => {
+  const h = makeMatch({ mode: 'coop', fake: true, botStrategy: 'external', externalReplay: true, externalAI: { manualWait: true, timeoutMs: 5000 },
+    seats: [{ seat: 0, playerId: 'p_0', name: 'P0', isBot: false, connected: true }, { seat: 1, playerId: 'manual_1', name: 'M1', isBot: true, connected: true }] });
+  t.after(() => h.m.dispose());
+  h.start();
+  assert.ok(h.drive(() => pending(h.m)?.ps.playerId === 'manual_1'));
+  const j = pending(h.m);
+  assert.deepEqual([h.m.deadline, j.deadline, j.timer], [0, 0, null]);
+  h.sched.advance(600000);
+  assert.equal(pending(h.m), j);
+  assert.equal(h.m.externalAI.metrics.fallbacks, 0);
+});
+
 test('stdio zero request timeout remains cancellable; ordinary requests still time out', async t => {
   const c = new StdioAI({ command: [process.execPath, '-e', 'process.stdin.resume()'], timeoutMs: 30, maxBytes: 65536, backoffMs: 1 });
   t.after(() => c.close());

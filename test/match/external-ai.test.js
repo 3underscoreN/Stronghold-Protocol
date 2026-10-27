@@ -127,6 +127,33 @@ test('a buy shortcut whose slot an earlier refresh of the same reply changed fai
   checkInvariants(m);
 });
 
+test('a reward shortcut used twice never buys the next queued offer, even when it shows the same operator', t => {
+  const h = prep(t), { m } = h, ps = m.order[0];
+  const results = [], original = m.externalAI.request.bind(m.externalAI);
+  m.externalAI.request = job => { results.push(...job.state.results); original(job); };
+  const ids = ps.shop.slots.filter(x => x && x.kind === 'chess').map(x => x.id).slice(0, 2); // allowed in this match
+  ps.pushRewardOffer('merge', { ids });
+  ps.pushRewardOffer('merge', { ids });
+  reply(m, [{ t: 'g.buy', slot: -1 }]); // an observation that lists the reward
+  const [rid] = [...pending(m).actions].find(([, i]) => i.t === 'g.reward' && i.idx === 0);
+  results.length = 0;
+  reply(m, [rid, rid]);
+  assert.equal(results[0].ok, true);
+  assert.equal(results[1].error, 'STALE_ACTION');
+  assert.match(results[1].detail, /no longer the current one/);
+  assert.equal(ps.offers.length, 1, 'the second offer is still queued');
+  checkInvariants(m);
+});
+
+test('a helper\'s last battle keeps its own wave\'s gates when its 联防 battle starts later', t => {
+  const h = prep(t), { m } = h, ps = m.order[0];
+  const spawn = (enemyKey, gate) => ({ enemyKey, count: 1, time: 0, preview: { gate } });
+  m.externalAI.observe(ps, 'onBattleStart', { kind: 'normal', spawns: [spawn('enemy_1007_slime', 'upper')] });
+  m.externalAI.observe(ps, 'onBattleStart', { kind: 'unite', spawns: [spawn('enemy_1007_slime', 'lower')] });
+  m.externalAI.observe(ps, 'onBattleResult', { result: { leaked: [{ enemyKey: 'enemy_1007_slime' }], killed: 0, total: 1 }, lpLoss: 1 });
+  assert.deepEqual(m.externalAI.battleFor(ps).leaks.map(l => l.gates), [['upper']]);
+});
+
 test('the observation carries the round routes and the last own battle (leaks per enemy with gates, unit statistics)', t => {
   const h = prep(t, { script: b => (b.round === 1 && b.kind === 'normal' ? { leaks: { ai_0: 2 } } : {}) }), { m } = h, ps = m.order[0];
   const look = () => aiObservation(m, ps, { id: 'look', kind: 'prep', deadline: 0, remaining: 1 }, []).digest;

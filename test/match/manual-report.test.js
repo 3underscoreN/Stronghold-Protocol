@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { observationMarkdown } from '../../tools/ai/manual-report.mjs';
+import { actionReply } from '../../tools/ai/manual-files.mjs';
 
 const row = (r, cells) => `${String(r).padStart(4)} ${cells.map(c => c.padStart(3)).join('')}`;
 const unit = (uid, name, extra = {}) => ({ uid, id: `c${uid}`, name, kind: 'chess', class: 'WARRIOR', caps: { block: true }, bonds: [], items: [], ...extra });
@@ -30,6 +31,8 @@ function observation({ handFull = false } = {}) {
         { id: 'a4', text: 'equip 7 on 2 (丙)', intent: { t: 'g.equip', itemUid: 7, targetUid: 2 } },
         { id: 'a5', text: 'bench 1 in slot 0', intent: { t: 'g.move', uid: 1, to: { area: 'hand', idx: 0 } } },
         { id: 'a6', text: 'place 5 at 9,9 RIGHT', intent: { t: 'g.move', uid: 5, to: { area: 'board', row: 9, col: 9 }, dir: 'RIGHT' } },
+        ...['RIGHT', 'UP', 'DOWN', 'LEFT'].map((dir, k) => ({ id: `a${9 + k}`, text: `place 5 at 9,8 ${dir}`, intent: { t: 'g.move', uid: 5, to: { area: 'board', row: 9, col: 8 }, dir } })),
+        { id: 'a13', text: 'place 5 at 9,7 LEFT', intent: { t: 'g.move', uid: 5, to: { area: 'board', row: 9, col: 7 }, dir: 'LEFT' } },
         { id: 'a7', text: 'ready', intent: { t: 'g.ready', ready: true } },
         { id: 'a8', text: 'refresh (1 gold)', intent: { t: 'g.refresh' } },
       ],
@@ -47,7 +50,9 @@ test('the manual page shows the last battle, a route map, roles, leader briefs a
   assert.ok(lines.some(l => l.startsWith('0: 丁 [SNIPER air] T2 $3')));
   const actions = lines.slice(lines.indexOf('## Actions (IDs expire at the next observation)') + 1, lines.findIndex(l => l.startsWith('Answer act-4.json')) - 1);
   assert.deepEqual(actions, ['a1: buy shop slot 0 (丁, 3 gold)', 'a8: refresh (1 gold)', 'equip 7 盾 on: a3=1 乙, a4=2 丙', 'sell: a2=1 乙',
-    'bench to hand idx 0: a5=1 乙', 'a7: ready', 'place 5@9,9: a6=RIGHT']);
+    'bench to hand idx 0: a5=1 乙', 'a7: ready',
+    'place: tile=aN means aN RIGHT, aN+1 UP, aN+2 DOWN, aN+3 LEFT; a tile with letters lists only those',
+    'place 5 甲: 9,9=a6R 9,8=a9 9,7=a13L']);
   assert.match(page, /bench\/withdraw \{"t":"g\.move","uid":U,"to":\{"area":"hand","idx":I\}\} \(I = the Hand slot number/);
 });
 
@@ -55,3 +60,12 @@ test('a full hand says why no buy or reward shortcuts are listed', () => {
   assert.match(observationMarkdown(observation({ handFull: true }), null, 1), /## Hand \(FULL: no buy or reward shortcuts until you sell or place a piece\)/);
   assert.doesNotMatch(observationMarkdown(observation(), null, 1), /FULL/);
 });
+
+test('a batch may end with {"done":true}; anywhere else or outside prep it is refused', () => {
+  const prep = { kind: 'prep', remaining: 10 };
+  assert.deepEqual(actionReply(['a1', { done: true }], prep).intents, ['a1', { t: 'g.ready', ready: true }]);
+  assert.deepEqual(actionReply({ done: true }, prep).intents, [{ t: 'g.ready', ready: true }]);
+  assert.throws(() => actionReply([{ done: true }, 'a1'], prep), /only be the last entry/);
+  assert.throws(() => actionReply(['a1', { done: true }], { kind: 'card', remaining: 10 }), /only for prep/);
+});
+

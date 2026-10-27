@@ -4,7 +4,7 @@
 // is taken for the 阿罗玛 / 安洁莉娜 / 拉普兰德 layers.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bondPlan, buyLoopSteps, bandRefreshGain, acquireLayers, gainCountLayers, refreshLayers } from '../../server/match/bot.js';
+import { bondPlan, buyLoopSteps, bandRefreshGain, acquireLayers, gainCountLayers, refreshLayers, engineFor, buyScoreOf } from '../../server/match/bot.js';
 import { makeMatch, give, legalTileFor, chessOfTier } from './harness.js';
 
 const SEAT = [{ seat: 0, playerId: 'ai_0', name: 'AI', isBot: true, connected: true }];
@@ -145,5 +145,35 @@ test('the main pass refreshes for 拉普兰德 + 阿罗玛 layers once (6 ≥ 3 
     ps.shop.frozen = false;
     run(buyLoopSteps(m, ps, { fillOnly: false, maxRefreshes: 0 }));
     assert.equal(ps.round.refreshes, 1);
+  } finally { h.dispose?.(); }
+});
+
+// §37.36 engine-first: a piece whose recurring or battle 特质 adds layers to the focus bond is worth more to buy and to field
+// until the Final Assault (layers stop growing there).
+test('engine-first: the text names the focus bond or the piece\'s own bonds; 获得时, layer-scaling and most-layered traits are not engines', () => {
+  const { h, m } = solo();
+  try {
+    const is = (id, bond) => engineFor(m, m.gd.chess(id), bond);
+    assert.ok(is('chess_char_2_04_a', 'yanShip'), '小满 <休整期结束时> 【炎】');
+    assert.ok(is('chess_char_2_06_a', 'sargonShip') && is('chess_char_3_06_a', 'sargonShip'), '莎草 / 菲莱 skill starts');
+    assert.ok(is('chess_char_3_12_a', 'kazimierzShip'), '瑕光 「自身已激活的盟约」 on a 卡西米尔 member');
+    assert.ok(is('chess_char_2_16_a', 'siracusaShip'), '拉普兰德 on refresh');
+    assert.ok(!is('chess_char_1_03_a', 'yanShip'), '惊蛰 is 获得时 (the layer trade)');
+    assert.ok(!is('chess_char_2_08_a', 'sargonShip'), '泡泡 scales with layers, adds none');
+    assert.ok(!is('chess_char_5_08_a', 'victoriaShip'), '号角 feeds the most-layered bond, not a named one');
+    assert.ok(!is('chess_char_2_04_a', 'sargonShip'), 'another bond');
+  } finally { h.dispose?.(); }
+});
+
+test('engine-first: an engine of the focus scores ENGINE_BONUS more before the Final Assault, a 获得时 unit does not', () => {
+  const { h, m, ps } = solo();
+  try {
+    ps.bandId = 'band_duyaoy';
+    const at = (round, id) => { m.round = round; ps._botFocus = null; return buyScoreOf(m, ps, id); };
+    const real = m.round;
+    const engine = at(m.gd.bossRound - 2, 'chess_char_2_04_a') - at(m.gd.bossRound, 'chess_char_2_04_a');
+    const plain = at(m.gd.bossRound - 2, 'chess_char_1_03_a') - at(m.gd.bossRound, 'chess_char_1_03_a');
+    m.round = real;
+    assert.ok(Math.abs(engine - plain - 10) < 1e-9, `小满 ${engine} vs 惊蛰 ${plain}`);
   } finally { h.dispose?.(); }
 });

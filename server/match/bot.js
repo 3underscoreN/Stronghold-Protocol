@@ -747,12 +747,41 @@ function traitsOf(m, c) {
   return t;
 }
 
+/**
+ * §37.36 [ASSUMED] engine-first: a piece whose recurring or battle 特质 adds layers to `bond` — its text names the bond
+ * (「使已激活的【萨尔贡】层数+6」) or adds to its own bonds (「自身所属／自身已激活的盟约层数+4」) and it has `bond`. Not a
+ * 获得时 one (the layer trade, acquireLayers), a layer-scaled bonus (「每叠加3层」) or one feeding whichever bond has the most
+ * layers (号角, 塑心, 调香师: counting them cost co-op seats, history §37.36). Cached per match and bond.
+ */
+const ENGINE_BONUS = 10;
+export function engineFor(m, c, bond) {
+  if (!c || !bond) return false;
+  const cache = m._botEngines || (m._botEngines = new Map());
+  const key = `${c.chessId}|${bond}`;
+  if (cache.has(key)) return cache.get(key);
+  const name = m.gd.bond(bond)?.name;
+  let yes = false;
+  for (const gid of c.garrisonIds || []) {
+    const g = m.gd.garrison(gid);
+    const text = String(g?.desc || '');
+    if (!g || g.eventType === 'SERVER_GAIN' || !/层数\+/.test(text)) continue;
+    if ((name && text.includes(`【${name}】`)) || (/自身(所属|已激活)的?盟约/.test(text) && (c.bonds || []).includes(bond))) {
+      yes = true;
+      break;
+    }
+  }
+  cache.set(key, yes);
+  return yes;
+}
+
 /** Stand-alone value of an owned piece (no bond context): power, items, role fit, layer engines. */
 function unitBase(m, piece, ctx) {
   const c = chessRec(m, piece.id, ctx.ps);
   if (!c) return 0;
   let v = power(c) + (piece.items ? piece.items.length * 5 : 0) + PLAN_UNIT_SHARE * planUnitWeight(m, ctx.ps, piece.id);
   if (m.round <= 11) v += traitsOf(m, c).recurring * 4;
+  // §37.36: layers stop growing in the Final Assault
+  if (m.round < m.gd.bossRound && engineFor(m, c, ctx.focus)) v += ENGINE_BONUS;
   if (c.attackKind === 'none' && !isHealer(c)) v -= 6;
   if (ctx.fly > 0 && hitsFly(c)) v += 2;
   if (ctx.model && !isHealer(c)) v += ARMOR_WEIGHT * (armorFit(ctx.model, c) - 0.6);
@@ -882,6 +911,7 @@ function buyScore(m, ps, id, ctx) {
   let s = power(c) * 0.6 + planUnitWeight(m, ps, id, true);
   const tr = traitsOf(m, c);
   if (m.round <= 11) s += tr.recurring * 3 + tr.gain * 2 + tr.econ * (m.round <= 7 ? 2 : 0);
+  if (m.round < m.gd.bossRound && engineFor(m, c, ctx.focus)) s += ENGINE_BONUS;
   const base = gd.baseIdOf(id);
   if (!c.isGolden) {
     const copies = ctx.copies.get(base) || 0;

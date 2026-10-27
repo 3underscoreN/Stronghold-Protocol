@@ -700,3 +700,13 @@ and refresh for 阿罗玛 / 安洁莉娜 / 拉普兰德 layers. Forced 职业队
 pick on 终极 lost (solo 19.4 %, co-op 8.5 % completion): the low-LP strategies do not survive rounds 11–13 yet. Open levers,
 per bond: 炎's gain count (the bots gain 2.4–3.5 operators a round with 小满 out), 阿戈尔's battle-start devour placement,
 谢拉格 freeze collectors, 卡西米尔's 远牙 row, and two tank-grade blockers beside a 6-member core.
+
+### Cycle 8: engine-first (§37.36, round54)
+
+A piece whose recurring or battle trait adds layers to the focus bond (its text names the bond, or adds to its own bonds)
+is worth ENGINE_BONUS more to buy and to field until the Final Assault. Normal band picks: solo 终极 1–160 pool completion
+25.1 → 30.7 % (wins 4 → 8), co-op 1–80 24.6 → 23.0 % (noise; 40-seed co-op runs swing about 5 points). Withdrawn: counting
+the most-layered-bond engines (co-op fell), bench engines kept for their per-copy layers (+0.44 pieces a round, flat), a
+two-heavy-blocker floor (more 职业队 boards reach the Final Assault, less damage there, co-op fell) and economy-item values
+(精打细算 still loses to three refreshes on a full board). Front-tile placements (凛御银灰, 阿戈尔's devour, 魔王, 空弦)
+remain open.

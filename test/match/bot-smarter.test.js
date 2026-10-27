@@ -165,7 +165,8 @@ test('#121: Given a teammate building a faction, When scoring its low-tier chess
     assert.deepEqual(m.gd.bandBondIds('band_paganini'), ['lateranoShip'], '潘格尼尼 names <拉特兰>');
     assert.equal(buyScoreOf(m, ps, low.chessId), ordinary - 12, 'the opening strategy reserves the faction at every tier');
     ps.bandId = 'band_paganini';
-    assert.equal(buyScoreOf(m, ps, low.chessId), ordinary, 'the own opening strategy needs the faction too');
+    // no yield; §37.35: the own 职业队 strategy also makes <拉特兰> the focus (bondValue's +10 for a focus member)
+    assert.ok(Math.abs(buyScoreOf(m, ps, low.chessId) - (ordinary + 10)) < 1e-9, 'the own opening strategy needs the faction too');
     ps.bandId = mate.bandId = null;
     // the main core bond on the public bond strip counts like an opening strategy
     mate.bonds = { lateranoShip: { count: 3 } };

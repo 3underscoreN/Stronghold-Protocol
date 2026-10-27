@@ -687,3 +687,16 @@ refresh stacker. Full deployment and a leak-free preceding round did not prevent
 regressions. There is no new production weight, difficulty exception or resource grant. Use
 `node tools/botbench.mjs --configs solo:ABYSS --seeds 40 --jobs 4 --layers --json layers.json` to reproduce the
 source ledger; history §37.24 gives all five configurations and the source/target comparisons.
+
+### Cycle 7: 职业队 (§37.35, round54)
+
+The maintainer (2026-10-28): judge on 终极 only; unless a 职业队 strategy reliably supplies the main bond's operators, the
+draws decide whether layers can be stacked, so no leader-specific (physical / Arts) drafting. The legacy bots now take a
+职业队 strategy's core bond (`gd.bandBondIds`) as the focus from round 1, spend its rigged refreshes (杜遥夜's first two,
+佩佩's after a 2 / 4 / 6 level-up) before levelling, trade every 获得时 layer trait plus the deployed 小满 / 夕 gain count,
+and refresh for 阿罗玛 / 安洁莉娜 / 拉普兰德 layers. Forced 职业队 strategies (9 × 40 solo 终极 seeds): main layers
+20 → 75, pool completion 15.9 → 20.1 %. The Final Assault share rises with the main bond's layers (31 % below 75, 46 % at
+125–200, 59 % at 200+), so roughly 400–500 main layers clear the pool — the community's 「400层保底」. A 职业队-only band
+pick on 终极 lost (solo 19.4 %, co-op 8.5 % completion): the low-LP strategies do not survive rounds 11–13 yet. Open levers,
+per bond: 炎's gain count (the bots gain 2.4–3.5 operators a round with 小满 out), 阿戈尔's battle-start devour placement,
+谢拉格 freeze collectors, 卡西米尔's 远牙 row, and two tank-grade blockers beside a 6-member core.

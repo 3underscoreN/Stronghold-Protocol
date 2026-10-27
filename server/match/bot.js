@@ -10,7 +10,9 @@
 //   2. economy. The bond plan (bondPlan): a focus core bond — owned members, members the shop can still bring at this
 //      level, banked layers, last round's focus (commit instead of flip-flopping), minus a teammate's main core bond
 //      (its bond strip; the shop pool is shared) — and a second bond (most owned members, next threshold within
-//      reach). Keepers: the deployed operators, focus / second members, chess of tier ≥ shop level − 1. Sell bench
+//      reach). A 职业队 strategy (one that supplies a core bond: 杜遥夜 炎, 贾维 叙拉古 …) makes that bond the focus from
+//      round 1 and takes the refreshes it rigs toward it (杜遥夜's first two, 佩佩's after a 2 / 4 / 6 level-up) before the
+//      level-up (§37.35). Keepers: the deployed operators, focus / second members, chess of tier ≥ shop level − 1. Sell bench
 //      chess that neither make the lineup nor build toward something (a pair whose third copy can still come, a
 //      keeper, an elite; ≤ BENCH_BUDGET spare units, pairs first), buy toward a full board (the deploy cap is 8 from
 //      round 1), complete every merge it can afford — before a level-up can spend the funds —, level the 调度中心 on a
@@ -426,6 +428,17 @@ function teammateBonds(m, ps) {
 }
 
 /**
+ * §37.35 [ASSUMED] 职业队: the core bond the own opening strategy supplies (gd.bandBondIds — 杜遥夜 炎, 佩佩 / 娜仁图亚 萨尔贡,
+ * 哈洛德 维多利亚, 休露丝 谢拉格, 潘格尼尼 拉特兰, 克莱门莎 阿戈尔, 玛恩纳 卡西米尔, 贾维 叙拉古), null for any other strategy or
+ * when the mode switches the bond off. Owner 2026-10-28: without a strategy that reliably supplies its bond's operators
+ * the draws decide whether layers can be stacked.
+ */
+function bandMain(m, ps) {
+  const gd = ps.gd || m.gd;
+  return gd.bandBondIds(ps.bandId).find((id) => gd.bond(id)?.isCore && !gd.modeInactiveBonds.has(id)) ?? null;
+}
+
+/**
  * The bonds the bot builds around (cached per round, owned set and public teammate claims): `focus` = the core bond with the best
  * owned members × 10 + reachable members (bondPoolStats, ≤ 4) + layers already banked (≤ 6) + commitment (16 with
  * ≥ 3 members, else 6). [ASSUMED] Subtract 30 for a living teammate's public main or opening strategy bond, except
@@ -434,7 +447,7 @@ function teammateBonds(m, ps) {
  * bond (core or add-on) with the most owned members whose next threshold is within reach (≥ 1 owned member).
  * `ps._botFocusId` keeps the focus across rounds. §35.62: an accepted advisor plan's primary core bond (its highest
  * priority) is the focus, owned members or not: the plan's direction leads legacy's procurement instead of competing with
- * it at +6..+30 per member.
+ * it at +6..+30 per member. §37.35: without a plan, a 职业队 strategy's core bond (bandMain) is the focus the same way.
  */
 export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
   const mates = teammateBonds(m, ps);
@@ -442,7 +455,8 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
   const reservations = [...mates].sort().join();
   const planMain = (advisorPlan(m, ps)?.bonds || []).slice().sort((a, b) => b.priority - a.priority || a.id.localeCompare(b.id))
     .map((b) => b.id).find((id) => m.gd.bond(id)?.isCore && !m.gd.modeInactiveBonds.has(id)) ?? null;
-  const key = `${m.round}|${ps.shop.level}|${[...owned.counts.entries()].map(([k, v]) => k + v).join()}|${reservations}|${planMain}`;
+  const main = planMain ?? bandMain(m, ps);
+  const key = `${m.round}|${ps.shop.level}|${[...owned.counts.entries()].map(([k, v]) => k + v).join()}|${reservations}|${main}`;
   if (ps._botFocus && ps._botFocus.key === key) return ps._botFocus;
   const prev = ps._botFocusId ?? null;
   let focus = null;
@@ -458,7 +472,7 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
       + (id === prev ? (k >= 3 ? CORE_LOCK : 6) : 0) - (mates.has(id) ? 30 : 0) + Math.min(0.9, (pool.supply.get(id) || 0) / 100);
     if (s > bestS) { bestS = s; focus = id; }
   }
-  if (planMain) focus = planMain;
+  if (main) focus = main;
   let second = null;
   let bestK = 0;
   for (const id of m.gd.bondIds) {
@@ -477,28 +491,108 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
 }
 
 /**
- * §35.63 layer trade: buy an operator whose 获得时 trait adds layers to every bond it has (SERVER_GAIN
- * SERVER_ADD_BOND_CHESS_ALL: 野鬃 / 角峰 / 艾丝黛尔 / 深靛 +2, 雪猎 / 灵知 +5, 忍冬 +6, 星熊 / 锏 +8) when it carries the focus or
- * an active bond, and sell it again unless it starts a pair, fills the board or makes the lineup. The community stacks this way: 「买卖
- * 灵知／野鬃／忍冬／角峰／雪猎」 doubles their stacking under 投资人 (BV1qkDsBtEER pinned; cv47352364; handoff/round51
- * RESEARCH §3.3). [ASSUMED] From R4, outside banking bands, and only when layers per net fund (price − the 1 refund) ×
- * the bonds it reaches is at least TRADE_MIN. Measured on 终极 with the other §35.63 rules (seeds 1–100): see history.
+ * §35.63 layer trade: buy an operator whose 获得时 trait adds layers to the focus or an active bond, and sell it again unless
+ * it starts a pair, fills the board or makes the lineup. The community stacks this way: 「买卖灵知／野鬃／忍冬／角峰／雪猎」
+ * doubles their stacking under 投资人 (BV1qkDsBtEER pinned; cv47352364; handoff/round51 RESEARCH §3.3). [ASSUMED] From R4,
+ * outside banking bands, and only when the layers per net fund (price − the 1 refund) are at least TRADE_MIN. §37.35: every
+ * 获得时 layer trait counts (acquireLayers), and so do the deployed 小满 / 夕, which add layers for every operator gained in
+ * the prep (gainCountLayers) — with both out, any cheap operator is a trade. Measured on 终极: see history §35.63, §37.35.
  */
 const TRADE_MIN = 3;
 const TRADE_FROM = 4;
-function gainLayers(gd, c) {
-  let n = 0;
+const bondList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+
+/**
+ * §37.35 [ASSUMED]: the layers one acquisition of `c` adds, per bond — every SERVER_GAIN layer trait: SERVER_ADD_BOND_CHESS_ALL
+ * (野鬃 / 角峰 / 艾丝黛尔 / 深靛 +2, 雪猎 / 灵知 +5, 忍冬 +6, 星熊 / 锏 +8 on each of its bonds), 惊蛰's SERVER_ADD_BOND_METHOD
+ * shoplv (the shop level), 烛煌's SERVER_ADD_BOND, 录武官's SERVER_ADD_MULTIPLE_BOND and 灰毫's
+ * SERVER_ADD_BOND_ACTIVATED_MOST_LAYER (the active bond with the most layers).
+ */
+export function acquireLayers(m, ps, c) {
+  const gd = ps.gd || m.gd;
+  const out = new Map();
+  const add = (b, n) => { if (b && n > 0) out.set(b, (out.get(b) || 0) + n); };
   for (const gid of c.garrisonIds || []) {
     const g = gd.garrison(gid);
-    if (g && g.eventType === 'SERVER_GAIN' && g.effectKey === 'SERVER_ADD_BOND_CHESS_ALL') n += Number(g.bb?.count) || 0;
+    if (!g || g.eventType !== 'SERVER_GAIN') continue;
+    const bb = g.bb || {}, bs = g.bbStr || {};
+    if (g.effectKey === 'SERVER_ADD_BOND_CHESS_ALL') for (const b of c.bonds || []) add(b, Number(bb.count) || 0);
+    else if (g.effectKey === 'SERVER_ADD_BOND_METHOD' && bs.add_method === 'shoplv') for (const b of bondList(bs.bond)) add(b, ps.shop.level * (Number(bb.multi) || 1));
+    else if (g.effectKey === 'SERVER_ADD_BOND') for (const b of bondList(bs.bond)) add(b, Number(bb.count) || 0);
+    else if (g.effectKey === 'SERVER_ADD_MULTIPLE_BOND') {
+      const counts = bondList(bs.count).map(Number);
+      bondList(bs.bond).forEach((b, i) => add(b, counts[i] || 0));
+    } else if (g.effectKey === 'SERVER_ADD_BOND_ACTIVATED_MOST_LAYER') {
+      const most = Object.entries(ps.bonds).filter(([, x]) => x && x.active).map(([id]) => id).sort((a, b) => (ps.layers[b] || 0) - (ps.layers[a] || 0))[0];
+      add(most, Number(bb.count) || 0);
+    }
+  }
+  return out;
+}
+
+/** §37.35 [ASSUMED]: layers per operator gained this prep from the deployed 小满 / 夕 (SERVER_PREP_FIN round_gain_char), active bonds only. */
+export function gainCountLayers(m, ps) {
+  const gd = ps.gd || m.gd;
+  let n = 0;
+  for (const p of ps.board.values()) {
+    if (p.kind !== 'chess') continue;
+    for (const gid of chessRec(m, p.id, ps)?.garrisonIds || []) {
+      const g = gd.garrison(gid);
+      if (g?.eventType !== 'SERVER_PREP_FIN' || g.effectKey !== 'SERVER_ADD_BOND_METHOD' || g.bbStr?.add_method !== 'round_gain_char') continue;
+      for (const b of bondList(g.bbStr.bond)) if (ps.bonds[b]?.active) n += Number(g.bb?.multi) || 1;
+    }
   }
   return n;
 }
+
+/**
+ * §37.35 [ASSUMED]: layers the next manual refresh adds to active bonds — the deployed 阿罗玛 / 安洁莉娜
+ * (SERVER_PREP_FIN SERVER_ADD_REFRESH_CNT_MULTIPLIER_BOND_LAYER: the multiplier per refresh of the round up to max_layer)
+ * and, on the round's first refresh, every 拉普兰德 on the board or the bench (SERVER_GAIN_BOND_LAYER_BY_REFRESH_CNT).
+ */
+export function refreshLayers(m, ps) {
+  const gd = ps.gd || m.gd;
+  const done = ps.round?.refreshes || 0;
+  let n = 0;
+  const scan = (p, onBoard) => {
+    if (!p || p.kind !== 'chess') return;
+    for (const gid of chessRec(m, p.id, ps)?.garrisonIds || []) {
+      const g = gd.garrison(gid);
+      if (!g) continue;
+      const k = bondList(g.bbStr?.bond).filter((b) => ps.bonds[b]?.active).length;
+      if (!k) continue;
+      if (onBoard && g.eventType === 'SERVER_PREP_FIN' && g.effectKey === 'SERVER_ADD_REFRESH_CNT_MULTIPLIER_BOND_LAYER') {
+        const mul = Number(g.bb?.multiplier) || 0;
+        if (mul * (done + 1) <= (Number(g.bb?.max_layer) || Infinity)) n += mul * k;
+      } else if (done === 0 && g.eventType === 'SERVER_REFRESH_SHOP' && g.effectKey === 'SERVER_GAIN_BOND_LAYER_BY_REFRESH_CNT') n += (Number(g.bb?.layer) || 0) * k;
+    }
+  };
+  for (const p of ps.board.values()) scan(p, true);
+  for (const p of ps.hand) scan(p, false);
+  return n;
+}
+
+/**
+ * §37.35 [ASSUMED]: refresh for the layers alone when they pay TRADE_MIN per fund (refreshLayers), keeping 2 funds — after a
+ * merge copy or a missing focus member the shop shows is bought.
+ */
+function layerRefresh(m, ps) {
+  const gd = ps.gd || m.gd;
+  const cost = ps.shop.freeRefreshes > 0 ? 0 : gd.refreshPrice;
+  if (ps.funds < cost + 2 || ps.shop.frozen || refreshLayers(m, ps) < TRADE_MIN * Math.max(1, cost)) return false;
+  const ctx = context(m, ps);
+  if (ps.shop.slots.some((s) => s && !s.sold && s.kind === 'chess' && ps.priceOf(s) <= ps.funds && (ps.completesChessMerge(s.id)
+    || (ctx.focus && !ctx.owned.bases.has(gd.baseIdOf(s.id)) && (chessRec(m, s.id, ps)?.bonds || []).includes(ctx.focus))))) return false;
+  return tryDo(() => ps.refresh());
+}
+
 function tradeOnce(m, ps, ctxOf) {
   if (m.round < TRADE_FROM || m.gd.leftoverKeptBands.includes(ps.bandId) || freeSlot(ps.hand) < 0) return false;
   const gd = ps.gd || m.gd;
+  const engine = gainCountLayers(m, ps);
   // the buy loop's context is built only when the shop shows an affordable layer unit (it runs every loop step)
-  if (!ps.shop.slots.some((sl) => sl && !sl.sold && sl.kind === 'chess' && ps.priceOf(sl) <= ps.funds && gainLayers(gd, gd.chess(sl.id) || {}))) return false;
+  if (!ps.shop.slots.some((sl) => sl && !sl.sold && sl.kind === 'chess' && ps.priceOf(sl) <= ps.funds
+    && (engine > 0 || acquireLayers(m, ps, gd.chess(sl.id) || {}).size))) return false;
   const ctx = ctxOf();
   const active = new Set(Object.entries(ps.bonds).filter(([, b]) => b && b.active).map(([id]) => id));
   if (ctx.focus) active.add(ctx.focus);
@@ -508,10 +602,11 @@ function tradeOnce(m, ps, ctxOf) {
     if (!sl || sl.sold || sl.kind !== 'chess') return;
     const price = ps.priceOf(sl);
     const c = price <= ps.funds ? gd.chess(sl.id) : null;
-    const layers = c ? gainLayers(gd, c) : 0;
-    const n = layers ? (c.bonds || []).filter((b) => active.has(b)).length : 0;
-    const v = (layers * n) / Math.max(1, price - 1);
-    if (n && v > bestV) { bestV = v; best = i; }
+    if (!c) return;
+    let layers = engine;
+    for (const [b, k] of acquireLayers(m, ps, c)) if (active.has(b)) layers += k;
+    const v = layers / Math.max(1, price - 1);
+    if (layers > 0 && v > bestV) { bestV = v; best = i; }
   });
   if (best < 0 || bestV < TRADE_MIN) return false;
   const before = new Set(ps.allChess().map((p) => p.uid));
@@ -526,13 +621,39 @@ function tradeOnce(m, ps, ctxOf) {
 /**
  * §35.63: the focus core bond (bondPlan) between 2 owned members and its top threshold (6; 阿戈尔 5), when buys and
  * refreshes still build toward it (null otherwise). Measured on 终极 bots: boards owning 6 members of one core at R11
- * went from 2/18 to 11/19, co-op seats alive at the Final Assault rose (handoff/round51 cycle 3, EXP_CORE).
+ * went from 2/18 to 11/19, co-op seats alive at the Final Assault rose (handoff/round51 cycle 3, EXP_CORE). §37.35: a
+ * 职业队 strategy's own core bond (bandMain) from its first member.
  */
-function coreGap(m, focus, owned) {
+function coreGap(m, focus, owned, ps = null) {
   const bond = focus ? m.gd.bond(focus) : null;
   const th = bond && bond.isCore && Array.isArray(bond.thresholds) && bond.thresholds.length ? bond.thresholds : null;
   const k = owned.counts.get(focus) || 0;
-  return th && k >= 2 && k < th[th.length - 1] ? { k, top: th[th.length - 1] } : null;
+  const from = ps && focus === bandMain(m, ps) ? 0 : 2;
+  return th && k >= from && k < th[th.length - 1] ? { k, top: th[th.length - 1] } : null;
+}
+
+/**
+ * §37.35 [ASSUMED] Members of `bond` the opening strategy adds to the next refresh beyond the shop's own odds: 杜遥夜's
+ * first two refreshes of a round show one (band_first_self_refresh_present_char), 佩佩's first refresh after a 2 / 4 / 6
+ * level-up fills every chess slot (up_shop_next_refresh_must_present_bond_char), 贾维 grants one every 6 refreshes, at
+ * most 2 a round (refresh_shop_count_gain_coin_bond_char_chess, spread over the refreshes). Counter names as in
+ * server/sim/content/bands/meta.js. `sure`: only the refreshes that certainly bring one.
+ */
+export function bandRefreshGain(m, ps, bond, { sure = false } = {}) {
+  const gd = ps.gd || m.gd;
+  const counters = ps.counters || {};
+  let n = 0;
+  for (const b of gd.band(ps.bandId)?.buffs || []) {
+    if (b.bbStr?.bond !== bond) continue;
+    if (b.key === 'band_first_self_refresh_present_char' && (ps.round?.refreshes || 0) < 2) n += Number(b.bb?.count) || 1;
+    else if (b.key === 'up_shop_next_refresh_must_present_bond_char' && (counters['band:pepe:special'] || 0) > 0) n += gd.shopSlots(ps.shop.level).chess;
+    else if (!sure && b.key === 'refresh_shop_count_gain_coin_bond_char_chess') {
+      const every = Number(b.bb?.refresh_count) || 0;
+      const granted = counters['band:chiave:r'] === m.round ? counters['band:chiave'] || 0 : 0;
+      if (every > 0 && granted < (Number(b.bb?.max_count) || Infinity)) n += 1 / every;
+    }
+  }
+  return n;
 }
 
 /** Copies a merge takes (3; 风丸 2). */
@@ -1602,13 +1723,21 @@ function refreshValue(m, ps, ctx) {
     else if (ctx.keep.has(b)) v += pShop * PAIR_HIT;
   }
   // §35.63: a refresh may also show a missing member of the focus core bond on its way to the top threshold
-  if (coreGap(m, ctx.focus, ctx.owned)) {
+  if (coreGap(m, ctx.focus, ctx.owned, ps)) {
     let miss = 1;
+    let bondLeft = 0, missingLeft = 0;
     for (const [id, e] of m.pool.entries) {
-      if (!(e.left > 0) || e.tier > L || ctx.owned.bases.has(id)) continue;
+      if (!(e.left > 0) || e.tier > L) continue;
       const c = m.gd.chess(id);
-      if (c && (c.bonds || []).includes(ctx.focus)) miss *= (1 - e.left / total) ** slots;
+      if (!c || !(c.bonds || []).includes(ctx.focus)) continue;
+      bondLeft += e.left;
+      if (ctx.owned.bases.has(id)) continue;
+      missingLeft += e.left;
+      miss *= (1 - e.left / total) ** slots;
     }
+    // §37.35: a member the opening strategy puts into this refresh is a missing one at the missing members' share
+    const rigged = ctx.focus === bandMain(m, ps) ? bandRefreshGain(m, ps, ctx.focus) : 0;
+    if (rigged > 0 && bondLeft > 0) miss *= (1 - missingLeft / bondLeft) ** rigged;
     v += (1 - miss) * CORE_HIT;
   }
   return v;
@@ -1952,6 +2081,7 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
   for (let guard = 0; guard < 40; guard++) {
     if (guard > 0) yield;
     if (!policy && !fillOnly && tradeOnce(m, ps, () => context(m, ps))) continue;
+    if (!policy && !fillOnly && !advisor && layerRefresh(m, ps)) { refreshes++; continue; }
     if (policy) takeOffers(m, ps, policy); // a merge reward can enable another merge before upgrading
     if (customPolicy && !fillOnly && policy.canLevel(m, ps)) {
       const oldLevel = ps.shop.level;
@@ -2003,8 +2133,12 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
       if (s.kind === 'chess') {
         if (advisor && ownsElite(m, ps, s.id)) return;
         const merges = ps.completesChessMerge(s.id);
-        if (freeSlot(ps.hand) < 0 || (mergesOnly && !merges)) return;
         const base = gd.baseIdOf(s.id);
+        // §37.35: before the level-up, a new member of the opening strategy's core bond is bought like a merge
+        const bandStep = fillOnly && !merges && !customPolicy && !advisor && ctx.focus && ctx.focus === bandMain(m, ps)
+          && !ctx.owned.bases.has(base) && countFree(ps.hand) >= 3 && (chessRec(m, s.id, ps)?.bonds || []).includes(ctx.focus)
+          && !!coreGap(m, ctx.focus, ctx.owned, ps);
+        if (freeSlot(ps.hand) < 0 || (mergesOnly && !merges && !bandStep)) return;
         const core = customPolicy && policy.core(m, ps, s.id);
         if (customPolicy) {
           if (fillOnly && !merges && policy.canLevel(m, ps)) return;
@@ -2022,7 +2156,7 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
         // §35.63: a missing member of the focus core bond is bought even when one swap does not raise the lineup yet,
         // while the bench keeps room for it and the members a later swap withdraws (3 free hand slots)
         const coreStep = !ctx.owned.bases.has(base) && countFree(ps.hand) >= 3 && (chessRec(m, s.id, ps)?.bonds || []).includes(ctx.focus)
-          && !!coreGap(m, ctx.focus, ctx.owned);
+          && !!coreGap(m, ctx.focus, ctx.owned, ps);
         if (boardFull && !merges && !advisorWanted(m, ps, s.id) && !coreStep) {
           if (!ctx.copies.get(base)) {
             // with a full board a new operator must improve the lineup
@@ -2070,6 +2204,16 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
     }
     if (buy) {
       if (!buyOffer(m, ps, best)) return;
+      continue;
+    }
+    // §37.35 [ASSUMED] 职业队: the refreshes the opening strategy rigs toward its core bond (杜遥夜's first two, 佩佩's after a
+    // 2 / 4 / 6 level-up) come before the level-up spends the funds, while a missing member can still come and be bought
+    const bandRefresh = fillOnly && !customPolicy && !advisor && ctx.focus && ctx.focus === bandMain(m, ps)
+      && ps.funds >= refreshCost + minPrice && bandRefreshGain(m, ps, ctx.focus, { sure: true }) >= 1
+      && !!coreGap(m, ctx.focus, ctx.owned, ps) && [...m.pool.entries].some(([id, e]) => e.left > 0 && e.tier <= ps.shop.level
+        && !ctx.owned.bases.has(id) && (m.gd.chess(id)?.bonds || []).includes(ctx.focus));
+    if (bandRefresh) {
+      if (!tryDo(() => ps.refresh())) return;
       continue;
     }
     if (canRefresh) {

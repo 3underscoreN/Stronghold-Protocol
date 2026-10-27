@@ -181,7 +181,8 @@ const DEFAULT_MELEE_RANGE = [[0, 0], [0, 1]];
 
 /**
  * Band pick among the strategies the mode offers (gd.bandIds): weighted by starting LP (sturdier strategies are
- * preferred). Alone, a band that withholds the first rounds' funds (老鲤 "资金暂存": no operator in R1–R2, every enemy
+ * preferred) — (LP − 18)², cubed on 终极 solo (§37.34 [ASSUMED]: most 终极 solo bots that fell did so in rounds 11–13 with
+ * half the LP of those that reached the Final Assault; botbench 80 seeds: Final Assault reached 50 → 56). Alone, a band that withholds the first rounds' funds (老鲤 "资金暂存": no operator in R1–R2, every enemy
  * leaks) is avoided — only 联防 teammates cover that. A band whose mechanic rides on a bond the mode switches off
  * (gd.bandBondIds ∩ gd.modeInactiveBonds — 标准: 潘格尼尼 <拉特兰>, 克莱门莎 <阿戈尔>, 玛恩纳 <卡西米尔>) weighs 0, never taken
  * (DESIGN §21.26). [ASSUMED] A living teammate's opening strategy soft-reserves those bonds before anyone is deployed:
@@ -205,7 +206,7 @@ export function botPickBand(m, ps) {
   const inactive = (id) => gd.bandBondIds(id).some((b) => gd.modeInactiveBonds.has(b));
   const pairs = ids.map((id) => {
     if (inactive(id)) return [id, 0];
-    const w = Math.max(1, (gd.startLp(id) - 18) ** 2) * (m.isSolo && lateFunds(id) ? 0.02 : 1)
+    const w = Math.max(1, (gd.startLp(id) - 18) ** (m.isSolo && m.difficulty === 'ABYSS' ? 3 : 2)) * (m.isSolo && lateFunds(id) ? 0.02 : 1)
       * (mates.length && burdensMates(id) ? MATE_BURDEN : 1);
     return [id, gd.bandBondIds(id).some((b) => reserved.has(b)) ? w * SOFT_BAND_RESERVE : w];
   });

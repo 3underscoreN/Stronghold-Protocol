@@ -71,6 +71,20 @@ test('co-op focus: a changed public main releases the cached plan within the sam
   } finally { m.dispose(); }
 });
 
+test('§37.34: 终极 solo bots prefer the sturdiest strategies more than on other difficulties', () => {
+  const share = (difficulty) => {
+    const { m } = makeMatch({ mode: 'solo', difficulty, seed: 5, seats: [{ seat: 0, playerId: 'ai_0', name: 'AI', isBot: true, connected: true }] }).start().toPrep();
+    try {
+      const bot = m.order[0], ids = m.gd.bandIds(), top = Math.max(...ids.map((id) => m.gd.startLp(id)));
+      let hits = 0;
+      for (let i = 0; i < 2000; i++) if (m.gd.startLp(botPickBand(m, bot)) === top) hits++;
+      return hits / 2000;
+    } finally { m.dispose(); }
+  };
+  const hard = share('HARD'), abyss = share('ABYSS');
+  assert.ok(abyss > hard + 0.15, `the highest-LP strategy: ${(abyss * 100).toFixed(0)} % on 终极 vs ${(hard * 100).toFixed(0)} % on 绝境`);
+});
+
 test('#514: strategy selection stays possible, and less likely, while a teammate holds that opening', () => {
   const { m } = makeMatch({ humans: 2, difficulty: 'HARD', seed: 3 }).start().toPrep();
   const [human, bot] = m.order;

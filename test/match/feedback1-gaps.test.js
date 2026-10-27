@@ -167,11 +167,13 @@ describe('§21.26 3 — strategies tied to a bond the mode switches off', () => 
     const { solo, coop } = picks('HARD');
     assert.ok(solo.filter((id) => TIED.has(id)).length > 0, `solo ${solo.filter((id) => TIED.has(id)).length}/200`);
     assert.ok(coop.filter((id) => TIED.has(id)).length > 0, `co-op ${coop.filter((id) => TIED.has(id)).length}/800`);
-    // the pre-0.1.1 pick (starting LP only), replayed on the same rng: identical where no bond is off
+    // the pre-0.1.1 pick (starting LP only), replayed on the same rng: identical where no bond is off (§37.34: cubed on
+    // 终极 solo)
     const before = (m) => {
       const ids = m.gd.bandIds();
       const lateFunds = (id) => /暂存/.test(String(m.gd.band(id)?.desc || ''));
-      const pairs = ids.map((id) => [id, Math.max(1, (m.gd.startLp(id) - 18) ** 2) * (m.isSolo && lateFunds(id) ? 0.02 : 1)]);
+      const exp = m.isSolo && m.difficulty === 'ABYSS' ? 3 : 2;
+      const pairs = ids.map((id) => [id, Math.max(1, (m.gd.startLp(id) - 18) ** exp) * (m.isSolo && lateFunds(id) ? 0.02 : 1)]);
       let r = m.rngBots() * pairs.reduce((a, [, w]) => a + w, 0);
       for (const [id, w] of pairs) { r -= w; if (r < 0) return id; }
       return pairs[pairs.length - 1][0];

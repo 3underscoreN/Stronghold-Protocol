@@ -85,7 +85,13 @@ export async function manualMatch(options, { MatchClass = Match, scheduler } = {
     if (!summary) throw new Error('Manual match interrupted before result');
     snapshotPhase();
     liveStatus();
-    Object.assign(record, { summary, round: m.round, external: m.externalAI.metrics, finalFeedback: Object.fromEntries(m.order.map(p => [p.seat, m.externalAI.states.get(p.playerId)?.results || []])) });
+    // §37.32 each seat's last battle (the Final Assault too) for the result page, named like the observation's report
+    const label = id => (m.gd.chess(id) || m.gd.token(id) || m.gd.enemy(id))?.name || id;
+    const lastBattle = Object.fromEntries(m.order.map(p => {
+      const b = m.externalAI.battleFor(p);
+      return [p.seat, b && { ...b, leaks: b.leaks.map(l => ({ ...l, name: label(l.enemyKey) })), units: b.units.map(u => ({ ...u, name: label(u.id) })) }];
+    }));
+    Object.assign(record, { summary, round: m.round, external: m.externalAI.metrics, lastBattle, finalFeedback: Object.fromEntries(m.order.map(p => [p.seat, m.externalAI.states.get(p.playerId)?.results || []])) });
     const names = Object.fromEntries(m.gd.bondIds.map(id => [id, m.gd.bond(id).name]));
     for (const seat of selected) {
       const folder = seatDir(root, mode, seat);

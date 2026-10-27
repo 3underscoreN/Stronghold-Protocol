@@ -185,6 +185,14 @@ test('manual-act is atomic, refuses duplicates and expired observations; done me
   writeJSON(path.join(dir, 'status.json'), { ...status, n: 2, expiresAt: Date.now() - 1 });
   assert.equal(call('["a1"]').status, 1);
   assert.equal(existsSync(path.join(dir, 'act-2.json')), false);
+  // §37.32: an answer bound to an older page is refused, never applied to the live one (its IDs mean other actions)
+  writeJSON(path.join(dir, 'status.json'), { ...status, n: 3 });
+  const late = spawnSync(process.execPath, ['tools/ai/manual-act.mjs', dir, '["a5"]', '--obs', '2'], { encoding: 'utf8' });
+  assert.equal(late.status, 1);
+  assert.match(late.stderr, /for obs-2, but obs-3 is the current observation \(live\); nothing was applied/);
+  assert.equal(existsSync(path.join(dir, 'act-3.json')), false);
+  assert.equal(spawnSync(process.execPath, ['tools/ai/manual-act.mjs', dir, '["a5"]', '--obs', '3'], { encoding: 'utf8' }).status, 0);
+  assert.equal(spawnSync(process.execPath, ['tools/ai/manual-act.mjs', dir, '["a5"]', '--obs'], { encoding: 'utf8' }).status, 1);
 });
 
 test('four-seat co-op launcher reaches concurrent prep with live wall-clock deadlines', { timeout: 30000 }, async t => {

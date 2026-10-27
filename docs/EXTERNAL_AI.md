@@ -87,7 +87,11 @@ node tools/ai/manual-act.mjs /tmp/sp-manual-solo '["a1"]'
 ```
 
 `a1` means the action shown in that observation, not a stable action across requests. Read the printed
-`obs-N.md` before answering. A raw batch also works, e.g. `'[{"t":"g.buy","slot":0}]'`, or pass
+`obs-N.md` before answering. §37.32: add `--obs N` (the page you read) to bind the answer to it. If obs-N's window
+ended and a newer page is live, the answer is refused instead of landing on that page, where the same IDs mean other
+actions. The page also names the match's Final Assault leader under its header, tags merge rewards with class and
+tier, says whose summon a token is (placeable while its owner is on the board; not counted in the deploy cap), says
+when a full deploy cap needs a raw `g.move` swap, and lists eliminated teammates under "Teammates". A raw batch also works, e.g. `'[{"t":"g.buy","slot":0}]'`, or pass
 `@/absolute/path/answer.json`. During prep, `'{"done":true}'` submits `g.ready` through the human validator;
 a rejected Ready produces another observation. It never delegates an unfinished prep just because `done` was used.
 Each batch gets the next `obs-N` / `act-N` pair, including several exchanges within one prep. The cumulative
@@ -370,7 +374,9 @@ Replay rebuilds short IDs from the recorded state and applies the same plan with
 
 `server/ai/knowledge.js` generates an immutable `sp-knowledge/1` pack from the active room data, room rule
 switches and authored plugin offers, with SHA-256 `version`. It contains the PLAYING §1–§7 rules summary and
-source digest, bonds/thresholds/effects, normal and elite operator costs/classes/skills/traits, item effects,
+source digest, bonds/thresholds/effects, normal and elite operator costs/classes/skills/traits (§37.32: also catalogue
+`stats` {hp, atk, def, res, block, attackInterval, aspd}, `dmgType`, `hitsAir` and `range`, the attack tiles as
+[dRow, dCol] facing RIGHT with dCol forward and UP = +row, rotated for other facings), item effects,
 bands, enemy notes/stats, boss HP by difficulty and difficulty scaling. The cache is keyed by immutable content,
 mode, content identity, language, rules and offers (at most 16 variants per content object). Existing stale-checked language
 overlays localize available game text; missing translations retain Chinese. Every named record also has `nameZh`.

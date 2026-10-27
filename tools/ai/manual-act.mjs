@@ -6,7 +6,9 @@ import { readJSON, writeJSON, actionReply } from './manual-files.mjs';
 
 try {
   const [dir, value, ...extra] = process.argv.slice(2);
-  if (!dir || extra.length) throw new Error('Usage: manual-act.mjs <seat-dir> [json | @file | --status]');
+  // §37.32 `--obs N` binds the answer to the page it was written for: shortcut IDs mean other actions on a later page.
+  const expect = extra.length === 2 && extra[0] === '--obs' && /^\d+$/.test(extra[1]) ? Number(extra[1]) : null;
+  if (!dir || (extra.length && expect === null)) throw new Error('Usage: manual-act.mjs <seat-dir> [json | @file | --status] [--obs N]');
   const folder = path.resolve(dir), status = readJSON(path.join(folder, 'status.json'));
   console.log(status.obs || path.join(folder, 'result.md'));
   const expired = status.expiresAt != null && Date.now() >= status.expiresAt;
@@ -19,7 +21,8 @@ try {
     if (status.error) console.log(status.error);
     if (status.state === 'waiting' && existsSync(path.join(folder, `act-${status.n}.json`))) console.log('Answer queued.');
   } else {
-    if (status.state !== 'waiting' || expired) throw new Error('No live unanswered observation; inspect --status and wait for the next obs');
+    if (expect !== null && status.n !== expect) throw new Error(`This answer is for obs-${expect}, but obs-${status.n} is the current observation (${status.state === 'waiting' && !expired ? 'live' : 'ended'}); nothing was applied. Read obs-${status.n} and answer it`);
+    if (status.state !== 'waiting' || expired) throw new Error(`No live unanswered observation: obs-${status.n} ${expired || status.state === 'expired' ? 'ended before this answer (the phase timer decided)' : `is ${status.state}`}; nothing was applied. Wait for the next obs`);
     const action = JSON.parse(value.startsWith('@') ? readFileSync(value.slice(1), 'utf8') : value);
     actionReply(action, status);
     const file = path.join(folder, `act-${status.n}.json`);

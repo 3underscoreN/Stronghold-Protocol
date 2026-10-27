@@ -1,21 +1,26 @@
 // §37.26 [ASSUMED] Compact presentation of human wire views and the public knowledge catalogue only.
+import { rotateOffset } from '../../server/sim/dir.js';
+
 const clean = s => String(s ?? '').replace(/<@[^>]*>|<\/>/g, '').replace(/\s+/g, ' ').trim();
 const short = (s, n = 110) => { const t = clean(s); return t.length > n ? `${t.slice(0, n)}…` : t; };
 const json = x => JSON.stringify(x);
 const progress = p => p ? `${p.current}/${p.total}` : '';
 export const actionList = o => o.digest.actions.map(a => `${a.id}: ${a.text} ${json(a.intent)}`).join('\n') + '\n';
 const num = n => n >= 10000 ? `${(n / 1000).toFixed(n >= 100000 ? 0 : 1)}k` : String(n);
-const RAW = 'Raw intents (zero-based): buy {"t":"g.buy","slot":S}; bench/withdraw {"t":"g.move","uid":U,"to":{"area":"hand","idx":I}} '
+const RAW = 'Raw intents (zero-based): buy {"t":"g.buy","slot":S} (a purchase fills the highest free Hand slot); bench/withdraw {"t":"g.move","uid":U,"to":{"area":"hand","idx":I}} '
   + '(I = the Hand slot number; an occupied slot swaps); place/move {"t":"g.move","uid":U,"to":{"area":"board","row":R,"col":C},"dir":"UP"} '
   + '(UP = +row; an occupied tile swaps); equip {"t":"g.equip","itemUid":I,"targetUid":U} (items destroyed on equip have no '
-  + 'equip shortcut: use this); sell {"t":"g.sell","uid":U}.';
+  + 'equip shortcut: use this); sell {"t":"g.sell","uid":U} (its items return to the Hand and take slots); '
+  + 'Art on a tile (e.g. 画卷) {"t":"g.art","itemUid":I,"row":R,"col":C}. Equipped items are locked (no unequip unless an '
+  + 'unequip shortcut is listed); a second copy of an item merges into an elite item in the Hand and an equipped copy comes '
+  + 'off: re-equip it.';
 
 // §37.29 [ASSUMED] The own field with the highest row on top (UP = +row): ground routes as arrows toward the objective,
 // flyer lines as ~, deploy tiles . (ground) / H (high ground), own board pieces 1-9 then letters (no H).
 const CODES = '123456789ABCDEFGIJKLMNOPQRSTUVWXYZ';
 const DIRS = ['RIGHT', 'UP', 'DOWN', 'LEFT']; // the digest's per-tile order (aiDigest.js)
 const role = p => p.class ? ` [${[p.class, ...['air', 'block', 'sustain'].filter(k => p.caps?.[k])].join(' ')}]` : '';
-function mapLines(d) {
+function mapLines(d, pack) {
   const g = d.geometry, key = (r, c) => `${r},${c}`, cells = new Map(), marks = new Map();
   if (!g) return [];
   for (const t of g.tiles || []) cells.set(key(...t.at), t.terrain === 'ranged' ? 'H' : '.');
@@ -35,8 +40,28 @@ function mapLines(d) {
   const lines = ['\n## Map (own field, top = highest row, UP = +row; arrows ground route, ~ flyers, . ground tile, H high ground)',
     `     ${cols.map(c => String(c).padStart(3)).join('')}`];
   for (let r = g.rows[1]; r >= g.rows[0]; r--) lines.push(`${String(r).padStart(4)} ${cols.map(c => (at.get(key(r, c)) || marks.get(key(r, c)) || cells.get(key(r, c)) || ' ').padStart(3)).join('')}`);
-  if (units.length) lines.push(`Units: ${units.map(({ p, code }) => `${code}=${p.uid} ${p.name} ${p.dir}${/[<>^v+*]/.test(marks.get(key(p.row, p.col)) || '') ? ' on route' : ''}`).join('; ')}`);
+  // §37.32 [ASSUMED] route tiles in each unit's catalogue range (knowledge `range`, rotated to its facing; skills, items and
+  // traits that change the range are not applied) — agents placed units that dealt 0 without seeing ranges
+  const ranges = new Map((pack?.operators || []).map(o => [o.id, o.range]));
+  const ground = new Set((g.routes || []).filter(rt => !rt.fly).flatMap(rt => rt.tiles.map(t => key(...t))));
+  const fly = new Set((g.routes || []).filter(rt => rt.fly).flatMap(rt => rt.tiles.map(t => key(...t))));
+  const reach = p => {
+    const grid = ranges.get(p.id);
+    if (!Array.isArray(grid) || !(ground.size || fly.size)) return '';
+    const hit = grid.map(([dr, dc]) => { const [a, b] = rotateOffset(dr, dc, p.dir); return key(p.row + a, p.col + b); });
+    return ` range ${hit.filter(k => ground.has(k)).length}${fly.size ? `/${hit.filter(k => fly.has(k)).length}` : ''}`;
+  };
+  const legend = ranges.size && (ground.size || fly.size) ? ` (range = route tiles in its base range: ground${fly.size ? '/flyer' : ''})` : '';
+  if (units.length) lines.push(`Units${legend}: ${units.map(({ p, code }) => `${code}=${p.uid} ${p.name} ${p.dir}${/[<>^v+*]/.test(marks.get(key(p.row, p.col)) || '') ? ' on route' : ''}${reach(p)}`).join('; ')}`);
   return lines;
+}
+
+// §37.29 the seat's last battle; §37.32 also on the result page (the Final Assault: its LP loss goes through the team LP)
+function battleLines(b) {
+  if (!b) return [];
+  return [`\n## Last battle R${b.round}${b.boss ? ' (boss field)' : ''}: killed ${b.killed}/${b.total}, ${b.boss ? `LP → ${b.lp}` : `LP −${b.lpLoss} → ${b.lp}`}`,
+    `Leaks: ${b.leaks.map(l => `${l.name} ×${l.count}${l.counted !== l.count ? ` (${l.counted} counted)` : ''}${l.gates.length ? ` ${l.gates.join('/')} gate` : ''}`).join('; ') || 'none'}.`,
+    `Units dmg/kills/taken/heal: ${b.units.slice(0, 12).map(u => `${u.uid ?? '-'} ${u.name} ${num(u.dmg)}/${u.kills}/${num(u.taken)}/${num(u.heal)}`).join('; ') || 'none'}.`];
 }
 
 export function observationMarkdown(o, pack, n) {
@@ -50,29 +75,27 @@ export function observationMarkdown(o, pack, n) {
     `Budget: ${c.deadline === 0 ? 'untimed solo' : `${Math.max(0, c.deadline - o.public.serverNow)} ms at receipt`}; ${c.remaining} intents left across this decision.`,
     `Funds ${d.economy.interest.carries ? `carry; interest ${d.economy.interest.now}, next at ${d.economy.interest.nextGold ?? '—'}` : 'expire at prep end'}; frozen slots ${d.economy.frozenSlots.join(',') || 'none'}.`,
     `Band: ${d.band.name || '—'} (${d.band.id || 'none'}). ${short(catalogue.get(d.band.id)?.effect, 180)}`];
+  if (d.boss?.id) lines.push(`Final Assault: R${d.boss.round} vs ${d.boss.name || d.boss.id} (${d.boss.id}).`);
   for (const e of own.effects || []) lines.push(`Effect ${e.name}: ${short(e.desc)} ${e.counter != null ? `counter=${e.counter}` : ''} ${e.counterText || ''} ${progress(e.progress)} ${e.roundProgress ? `round ${progress(e.roundProgress)}` : ''}`.trim());
   lines.push(`Counters: spent ${own.stats.gold}, refreshes ${own.stats.refreshes}, merges ${own.stats.merges}.`);
   lines.push('\n## Last response / host feedback');
   lines.push(...(o.results?.length ? o.results.map(r => `${r.ok ? 'ACCEPTED' : 'REJECTED'} ${json(r.intent)}: ${r.error || 'ok'}${r.detail ? ` (${clean(r.detail)})` : ''}${r.fallback ? ' — FALLBACK' : ''}`) : ['None.']));
-  const b = d.lastBattle;
-  if (b) {
-    lines.push(`\n## Last battle R${b.round}${b.boss ? ' (boss field)' : ''}: killed ${b.killed}/${b.total}, LP −${b.lpLoss} → ${b.lp}`);
-    lines.push(`Leaks: ${b.leaks.map(l => `${l.name} ×${l.count}${l.counted !== l.count ? ` (${l.counted} counted)` : ''}${l.gates.length ? ` ${l.gates.join('/')} gate` : ''}`).join('; ') || 'none'}.`);
-    lines.push(`Units dmg/kills/taken/heal: ${b.units.slice(0, 12).map(u => `${u.uid ?? '-'} ${u.name} ${num(u.dmg)}/${u.kills}/${num(u.taken)}/${num(u.heal)}`).join('; ') || 'none'}.`);
-  }
+  lines.push(...battleLines(d.lastBattle));
   lines.push('\n## Shop');
   for (const s of d.shop.filter(Boolean)) {
     const inventory = [...held, ...held.flatMap(p => (p.items || []).map(i => ({ ...i, kind: 'item' })))];
     const copies = inventory.filter(p => p.kind === s.kind && (p.baseId || p.id) === (s.baseId || s.id));
     lines.push(`${s.slot}: ${s.name}${role(s)} T${s.tier} $${s.price} ${s.sold ? 'SOLD' : ''}${s.frozen ? ' FROZEN' : ''}; ${bonds(s.bonds)}; owned ${copies.filter(p => !p.golden).length} normal + ${copies.filter(p => p.golden).length} elite${s.kind === 'item' ? `; ${short(catalogue.get(s.id)?.effect)}` : ''}`);
   }
-  // §37.29: buy shortcuts need a free hand slot; say so instead of silently listing none
-  const handFull = own.hand.length > 0 && own.hand.every(Boolean);
+  // §37.29: buy shortcuts need a free hand slot; say so instead of silently listing none. §37.32: the same for a full
+  // deploy cap (operators then have no place shortcuts), and summons say whose they are (agent test feedback).
+  const handFull = own.hand.length > 0 && own.hand.every(Boolean), deployFull = own.deployCount >= d.deployCap;
+  const token = p => p.kind === 'token' ? ` [summon of ${held.find(x => x.uid === p.ownerUid)?.name || `uid ${p.ownerUid}`}; placeable while its owner is on the board; not counted in the deploy cap]` : '';
   for (const [label, pieces] of [['Hand', d.bench], ['Temp', d.overflow], ['Board', d.board]]) {
-    lines.push(`\n## ${label}${label === 'Hand' && handFull ? ' (FULL: no buy or reward shortcuts until you sell or place a piece)' : ''}`);
-    lines.push(...(pieces.length ? pieces.map(p => `uid=${p.uid} ${p.name}${role(p)}${p.golden ? ' ELITE' : ''} ${p.row != null ? `@${p.row},${p.col} ${p.dir}` : p.slot != null ? `slot=${p.slot}` : ''}; ${bonds(p.bonds)}${p.items?.length ? `; items ${p.items.map(i => `${i.uid}:${i.name}${i.progress ? ` ${progress(i.progress)}` : ''}`).join(', ')}` : ''}${p.kind === 'item' ? `; ${short(catalogue.get(p.id)?.effect)} ${progress(p.progress)}` : ''}`) : ['Empty.']));
+    lines.push(`\n## ${label}${label === 'Hand' && handFull ? ' (FULL: no buy or reward shortcuts until you sell or place a piece)' : ''}${label === 'Hand' && deployFull && pieces.some(p => p.kind === 'chess') ? ` (deploy ${own.deployCount}/${d.deployCap} full: operators here have no place shortcuts; swap one onto an occupied tile with a raw g.move)` : ''}`);
+    lines.push(...(pieces.length ? pieces.map(p => `uid=${p.uid} ${p.name}${role(p)}${token(p)}${p.golden ? ' ELITE' : ''} ${p.row != null ? `@${p.row},${p.col} ${p.dir}` : p.slot != null ? `slot=${p.slot}` : ''}; ${bonds(p.bonds)}${p.items?.length ? `; items ${p.items.map(i => `${i.uid}:${i.name}${i.progress ? ` ${progress(i.progress)}` : ''}`).join(', ')}` : ''}${p.kind === 'item' ? `; ${short(catalogue.get(p.id)?.effect)} ${progress(p.progress)}` : ''}`) : ['Empty.']));
   }
-  lines.push(...mapLines(d));
+  lines.push(...mapLines(d, pack));
   lines.push('\n## Bonds (banked layers; counts are current, hand is potential unless countsHand)');
   const entries = new Map(d.bonds.map(b => [b.bondId, b]));
   for (const p of held) for (const id of p.bonds || []) if (!entries.has(id)) entries.set(id, { bondId: id, count: 0, layers: 0, thresholds: catalogue.get(id)?.thresholds });
@@ -101,9 +124,12 @@ export function observationMarkdown(o, pack, n) {
   for (const w of d.choices.offers || []) for (const s of w.seats.filter(s => s.playerId === d.playerId && !s.picked)) for (const card of s.slots.filter(c => c.available)) {
     lines.push(`offer ${w.id} seq=${w.seq} idx=${card.idx} id=${card.id}: ${card.name} $${card.price ?? 0} — ${short(card.desc)}`);
   }
-  for (const r of d.rewards.filter(r => r && !r.sold)) lines.push(`reward idx=${r.slot} id=${r.id}: ${r.name} $${r.price ?? 0} — ${short(catalogue.get(r.id)?.effect || catalogue.get(r.id)?.traits?.join('; '))}`);
-  if (d.opponents.length) {
+  for (const r of d.rewards.filter(r => r && !r.sold)) lines.push(`reward idx=${r.slot} id=${r.id}: ${r.name}${role(r)}${r.tier ? ` T${r.tier}` : ''} $${r.price ?? 0}${r.bonds?.length ? `; ${bonds(r.bonds)}` : ''} — ${short(catalogue.get(r.id)?.effect || catalogue.get(r.id)?.traits?.join('; '))}`);
+  // §37.32: the digest lists alive teammates only; say who is out instead of letting the section vanish
+  const gone = (o.public.players || []).filter(p => p.playerId !== d.playerId && !p.alive);
+  if (d.opponents.length || gone.length) {
     lines.push('\n## Teammates (public)');
+    if (gone.length) lines.push(`Out: ${gone.map(p => `${p.playerId} (band ${name(p.bandId)})`).join(', ')}${d.opponents.length ? '' : '; you play on alone'}.`);
     for (const p of d.opponents) lines.push(`${p.playerId} LP=${p.lp}, band=${name(p.bandId)}; ${p.bonds.filter(b => b.active).map(b => `${name(b.bondId)} ${b.count} L${b.layers}`).join('; ')}; board ${p.board.map(u => `${u.name}@${u.row},${u.col}`).join(', ')}`);
   }
   lines.push('\n## Actions (IDs expire at the next observation)');
@@ -167,6 +193,7 @@ export function resultMarkdown(record, seat, names = {}) {
     `Reached round ${record.round}; passed ${p.roundsPassed}; LP ${p.lp}; team LP ${record.summary.teamLp ?? '—'}.`,
     `FA damage ${record.fa?.damageBySeat[seat] ?? 0} / pool ${record.fa?.pool ?? 'not reached'}; remaining ${record.fa?.remaining ?? '—'}.`,
     `External fallbacks: ${record.external?.bySeat[seat]?.fallbacks || 0}.`,
+    ...battleLines(record.lastBattle?.[seat]),
     '\n## Banked layers per round (settlement / result)',
     ...[...rounds].map(([r, s]) => `R${r} LP=${s.lp}: ${Object.entries(s.layers).map(([b, l]) => `${names[b] || b}(${b})=${l}`).join('; ') || 'none'}`),
     '\n## Gold spent by kind', ...Object.entries(spent).map(([k, v]) => `${k}: ${v}`), `Total: ${p.stats.gold}`,

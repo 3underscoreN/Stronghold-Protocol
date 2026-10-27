@@ -105,7 +105,8 @@ PowerShell 用 `$env:SP_BOT_STRATEGY = 'external'` 的形式逐个设置同名�
 
 顾问模式默认先发一次带内容哈希的知识包（HTTP hello POST 或 stdio hello 行，服务必须回应相同
 `knowledgeVersion`）；并发席位共用，stdio 子进程重启才重发。包含当前玩法插件的数据、规则和
-公开选项卡，资料更新后哈希也变。`SP_EXTERNAL_AI_LANGUAGE` 可选 `zh-CN/en/ja/ko/zh-TW`，名称始终
+公开选项卡，资料更新后哈希也变。§37.32：干员条目另有图鉴属性 `stats`（hp、atk、def、res、block、attackInterval、aspd）、
+`dmgType`、`hitsAir` 和攻击范围 `range`（朝右时的 [行差, 列差]，列差向前、UP 为 +行，其他朝向旋转）；精简系统提示不含这些字段。`SP_EXTERNAL_AI_LANGUAGE` 可选 `zh-CN/en/ja/ko/zh-TW`，名称始终
 附 `nameZh`，缺翻译保留中文；原始玩法表、规则说明和中文经济表是参考，插件效果以当前数据为准。
 旧 direct 服务不需要 hello；需要知识包时设置 `SP_EXTERNAL_AI_KNOWLEDGE=1`。
 
@@ -406,6 +407,9 @@ node tools/ai/manual-act.mjs /tmp/sp-manual-solo '["a1"]'
 
 也接受原始意图数组，如 `'[{"t":"g.buy","slot":0}]'`，或 `@/absolute/path/answer.json`。
 `aN` 仅在当前观察有效；每批后产生新观察与新 `act-N.json`，同一次休整可以交互多次。
+§37.32：加上 `--obs N`（读的那一页的编号）把回答绑定到那一页。若 obs-N 的窗口已过、新的一页已经发出，回答会被拒绝，
+不会落到新页上（同一个 `aN` 在新页上是别的动作）。页面首行下方写明本局最终攻势首领；合成奖励带职业／阶级标签；
+召唤物写明归属（主人在场才能放，不占部署上限）；部署已满时手牌说明要用原始 `g.move` 换人；出局的队友列在「Teammates」里。
 休整的 `'{"done":true}'` 转成经过真人校验的 Ready；若有临时区／待选卡等阻碍，会显示拒绝并继续等输入。
 每次决策累计最多 256 个意图，观察中显示剩余额度；耗尽后该决策交给阶段倒计时，和真人一样（§37.30）。
 

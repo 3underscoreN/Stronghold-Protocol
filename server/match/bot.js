@@ -45,7 +45,8 @@
 //      (act2 m01 blowers) the DPS is scaled by the blower ATK bonus of that direction (with / against / across). The last
 //      arrangement of a prep REHEARSES up to m.botRehearsal distinct layout variants with the real Battle and normal
 //      battle inputs (isolated preview dispatch, no settlement) and keeps the one with the fewest leaks. The default plan is
-//      placed first; Match steps the rehearsal in wall-clock-bounded slices (botPrepBegin → job.run → botPrepEnd) so
+//      placed first (the Final Assault puts the leader chain second, leaderChainPlan §37.33); Match steps the rehearsal
+//      in wall-clock-bounded slices (botPrepBegin → job.run → botPrepEnd) so
 //      whole simulated battles never block the server's event loop. With `m.botRehearsalDelegate` an AI teammate's
 //      candidates go to the current host's browser instead (a human seat under AI 托管 keeps the server's rehearsal)
 //      and the server simulates them only when nobody answers (MatchRehearsal).
@@ -2186,6 +2187,9 @@ export function* arrangeSteps(m, ps, { final = false, defer = false, delegate = 
   // A boss round has no `m.wave`. The already-planned boss group is rehearsed the same way, on its own seed.
   if (final && (m.wave || bossWaveOf(m, ps)) && m.botRehearsal > 0) {
     for (const v of REHEARSAL_VARIANTS) plans.push(yield* planLayoutSteps(m, ps, chosen, { ...LAYOUT_PARAMS, ...v }));
+    // §37.33 the leader chain goes right after the default plan, inside the rehearsal budget (Final Assault only)
+    const chain = leaderChainPlan(m, ps, chosen, plans[0]);
+    if (chain) plans.splice(1, 0, chain);
   } else {
     plans.push(yield* planLayoutSteps(m, ps, chosen));
   }
@@ -2202,6 +2206,70 @@ export function* arrangeSteps(m, ps, { final = false, defer = false, delegate = 
   }
   yield* applyPlanSteps(m, ps, chosen, plans.length > 1 ? rehearse(m, ps, chosen, plans) : plans[0]);
   return null;
+}
+
+/**
+ * §37.33 [ASSUMED] One more boss-round candidate (round-54 Opus solo game, seed 1): the blockers on consecutive tiles
+ * of the leader's route where it passes most (its loop), facing the way it comes, and every other unit re-aimed at
+ * those tiles. A blocked 卢西恩 does not evade and every leader is held where the damage is. Only a candidate: the boss
+ * rehearsal keeps it when it leaks no more and deals more leader damage than the default plan (botbench: solo HARD
+ * 36 → 42 wins on 80 seeds, co-op HARD 27 → 28 on 40, leader pool completion up on every configuration).
+ */
+export function leaderChainPlan(m, ps, chosen, base) {
+  // the Final Assault only: the hidden core was not measured (a boosted golden lost its 隐秘核心 clear with it)
+  if (m.wave || m.round !== m.gd.bossRound || !bossWaveOf(m, ps) || !base) return null;
+  const model = fieldModel(m, ps);
+  const lead = model.routes.find((rt) => !rt.fly && rt.dwell > 0);
+  if (!lead || lead.tiles.length < 2) return null;
+  const pgd = ps.gd || m.gd, deployMap = ps.deployMap();
+  const recs = new Map(chosen.map((p) => [p.uid, p.kind === 'chess' ? rangeRec(ps, pgd.chess(p.id)) : (p.kind === 'token' ? pgd.token(p.id) : null)]));
+  const classOf = (p) => (p.kind === 'chess' ? placeClass(ps, pgd.chess(p.id)) : positionClass(recs.get(p.uid)));
+  const melee = new Set(legalTiles(deployMap, 'melee').map(([r, c]) => tileKey(r, c)));
+  const visits = new Map();
+  for (const k of lead.tiles) visits.set(k, (visits.get(k) || 0) + 1);
+  const order = [];
+  for (const k of lead.tiles) if (melee.has(k) && !order.includes(k)) order.push(k);
+  const blockers = chosen.filter((p) => p.kind === 'chess' && isBlocker(recs.get(p.uid)) && classOf(p) !== 'ranged');
+  const n = Math.min(blockers.length, order.length);
+  if (!n) return null;
+  let bestAt = 0, best = -1;
+  for (let i = 0; i + n <= order.length; i++) {
+    const v = order.slice(i, i + n).reduce((s, k) => s + visits.get(k), 0);
+    if (v > best) { best = v; bestAt = i; }
+  }
+  const chain = order.slice(bestAt, bestAt + n);
+  const facing = (key) => {
+    const i = lead.tiles.indexOf(key), prev = lead.tiles[Math.max(0, i - 1)];
+    const [r, c] = parseKey(key), [pr, pc] = parseKey(prev);
+    return pr > r ? 'UP' : pr < r ? 'DOWN' : pc < c ? 'LEFT' : 'RIGHT';
+  };
+  const plan = new LayoutPlan(), taken = new Set();
+  const put = (p, key, dir) => { plan.set(p.uid, key); plan.dirs.set(p.uid, dir); taken.add(key); };
+  blockers.slice(0, n).forEach((p, i) => put(p, chain[i], facing(chain[i])));
+  const want = new Set(chain);
+  for (const p of chosen) {
+    if (plan.has(p.uid)) continue;
+    const rec = recs.get(p.uid);
+    let pick = null, score = -1;
+    if (rec) for (const [r, c] of legalTiles(deployMap, classOf(p))) {
+      const key = tileKey(r, c);
+      if (taken.has(key)) continue;
+      for (const dir of PLAN_DIRS) {
+        const u = unitOf(rec, key, r, c, dir, model);
+        const hit = [...u.cover].filter((k) => want.has(k)).length;
+        // ties keep the default layout's tile and facing
+        const v = hit * 2 + (base.get(p.uid) === key && planDir(base, p.uid) === dir ? 1 : 0);
+        if (v > score) { score = v; pick = [key, dir]; }
+      }
+    }
+    if (!pick) {
+      const key = base.get(p.uid);
+      if (!key || taken.has(key)) return null;
+      pick = [key, planDir(base, p.uid)];
+    }
+    put(p, pick[0], pick[1]);
+  }
+  return plan;
 }
 
 /**

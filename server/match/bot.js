@@ -187,8 +187,11 @@ const DEFAULT_MELEE_RANGE = [[0, 0], [0, 1]];
 
 /**
  * Band pick among the strategies the mode offers (gd.bandIds): weighted by starting LP (sturdier strategies are
- * preferred) — (LP − 18)², cubed on 终极 solo (§37.34 [ASSUMED]: most 终极 solo bots that fell did so in rounds 11–13 with
- * half the LP of those that reached the Final Assault; botbench 80 seeds: Final Assault reached 50 → 56). Alone, a band that withholds the first rounds' funds (老鲤 "资金暂存": no operator in R1–R2, every enemy
+ * preferred) — (LP − 18)², cubed on 终极 (§37.34 [ASSUMED]: most 终极 solo bots that fell did so in rounds 11–13 with
+ * half the LP of those that reached the Final Assault; botbench 80 seeds: Final Assault reached 50 → 56). §37.39
+ * [ASSUMED]: on 终极 co-op too — the team plays on while one seat lives, and the draft gives 歌利亚 (45 LP) to one seat at
+ * most: co-op games with a 歌利亚 seat reached the Final Assault 52 % of the time against 36 % without (320 seeds), and
+ * the cube puts one in 94 % of games instead of 69 %. Alone, a band that withholds the first rounds' funds (老鲤 "资金暂存": no operator in R1–R2, every enemy
  * leaks) is avoided — only 联防 teammates cover that. A band whose mechanic rides on a bond the mode switches off
  * (gd.bandBondIds ∩ gd.modeInactiveBonds — 标准: 潘格尼尼 <拉特兰>, 克莱门莎 <阿戈尔>, 玛恩纳 <卡西米尔>) weighs 0, never taken
  * (DESIGN §21.26). [ASSUMED] A living teammate's opening strategy soft-reserves those bonds before anyone is deployed:
@@ -212,7 +215,7 @@ export function botPickBand(m, ps) {
   const inactive = (id) => gd.bandBondIds(id).some((b) => gd.modeInactiveBonds.has(b));
   const pairs = ids.map((id) => {
     if (inactive(id)) return [id, 0];
-    const w = Math.max(1, (gd.startLp(id) - 18) ** (m.isSolo && m.difficulty === 'ABYSS' ? 3 : 2)) * (m.isSolo && lateFunds(id) ? 0.02 : 1)
+    const w = Math.max(1, (gd.startLp(id) - 18) ** (m.difficulty === 'ABYSS' ? 3 : 2)) * (m.isSolo && lateFunds(id) ? 0.02 : 1)
       * (mates.length && burdensMates(id) ? MATE_BURDEN : 1);
     return [id, gd.bandBondIds(id).some((b) => reserved.has(b)) ? w * SOFT_BAND_RESERVE : w];
   });
@@ -2215,6 +2218,14 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
         if (!boardFull) sc += 8;
       } else {
         if (fillOnly) return;
+        const requested = advisor?.items?.buy?.includes(s.id);
+        // §37.39 [ASSUMED]: shop equipment only when it completes an equipment merge (or an advisor asks for it). Bots used
+        // to buy almost every item the shop showed once a carrier had room (8.4 on the board at R13, 2–4 funds a round from
+        // R10); as refreshes those funds buy more — 5–6 → 6–8 refreshes a round in R11–R14, merges 4.6 → 5.4 a game, board
+        // elites at R14 3.3 → 3.8 (职业队 forced), and more wins on every 终极 bench. Tier ≥ 4 items only was no better.
+        // Equipment from 机变 cards, rewards and strategies is still taken and equipped; a custom policy (伊奥莱塔's
+        // strategy bots) keeps its own equipment rule.
+        if (!customPolicy && !requested && !ps.completesItemMerge(s.id)) return;
         if (!advisorItemAllowed(m, ps, s)) return;
         if (customPolicy && (policy.canLevel(m, ps) || (canRefresh && freeSlot(ps.hand) >= 0
           && policy.searchTargets(m, ps).some(t => ps.funds >= refreshCost
@@ -2223,7 +2234,6 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
         if (freeSlot(ps.hand) < 0) return;
         if (ps.funds - price < reserve && !ps.completesItemMerge(s.id)) return;
         const carriers = [...ps.board.values()].filter((p) => p.kind === 'chess' && slotFree(m, ps, p, gd.item(s.id))).length;
-        const requested = advisor?.items?.buy?.includes(s.id);
         if (!carriers && !requested) return;
         sc = 6 + (gd.tierOf(s.id) || 1) * 3 - price + (ps.completesItemMerge(s.id) ? 10 : 0) + (requested ? 24 : 0);
       }

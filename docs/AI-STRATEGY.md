@@ -736,3 +736,17 @@ in every later shop cost more than tier 6 brings. Solo 终极 1–320 pool compl
 an L4 cap, and holding the level while leaking were worse or flat. Co-op's R7–R9 (enemy HP ×3.58 / ×4.30) leave 0.3–0.9
 perfect seats a game, so 联防 rarely runs then and the team loses 18–23 LP a round: a defensive anchor seat is the open lever.
 
+
+### Cycle 11: co-op band pick and no shop equipment (§37.39, round54)
+
+A per-seat co-op diagnosis (handoff/diag/seatdiag.mjs) found perfect and leaking seats in R7–R9 nearly alike in level, units
+and tiers, and a funds lab showed a richer seat carries the team (one seat +4 funds a round: Final Assault reached 19 → 28 of
+40) — but the rules have no way to move funds between teammates, and teammates yielding bonds to the sturdiest seat did not
+help. What did: (1) the band draft gives 歌利亚 (45 LP, no other effect) to one seat at most, and co-op games with one reach
+the Final Assault 52 % vs 36 %; the cubed LP weight (as on solo 终极) seats one in 94 % of games (co-op 1–320 +3.2 ± 2.5).
+(2) Bots bought nearly every shop item a carrier could hold (8.4 on the board at R13); not buying them turns 2–4 funds a round
+into refreshes, and refreshes at the capped level are worth far more (capping them at 2 a prep cost 7–12 points): merges 4.6 →
+5.4 a game, more elites, more wins everywhere. Together: co-op 30.6 → 35.9 % (+5.3 ± 2.7), solo 38.7 → 40.4 %, 职业队 forced
+29.0 → 33.4 % (+4.5 ± 1.9). Withdrawn: merge farming at level 5, level timing tweaks, expected-layer engine values, the Grok
+band-fix bundle, freezing engines, a higher full-board buy floor. Solo bots would gain ~4 more points by always taking 歌利亚
+(43.0 % vs 34.5 % for the other bands), a benchmark gain rather than better play — left to the owner.

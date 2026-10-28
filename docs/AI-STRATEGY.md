@@ -710,3 +710,19 @@ the most-layered-bond engines (co-op fell), bench engines kept for their per-cop
 two-heavy-blocker floor (more 职业队 boards reach the Final Assault, less damage there, co-op fell) and economy-item values
 (精打细算 still loses to three refreshes on a full board). Front-tile placements (凛御银灰, 阿戈尔's devour, 魔王, 空弦)
 remain open.
+
+### Cycle 9: R11–R13 diagnosis, positional traits, layer-gain rehearsal ties, engine merges (§37.37, round54)
+
+The rounds before the Final Assault leak because boards are outclassed, not misplaced: 79 % of R11–R13 leaks were never
+blocked and walked off with 70 % of their HP, 1599 of 1812 after the first blocker fell; co-op 终极's official enemy HP is
+×3.58 / ×4.30 at R7 / R8 against solo's ×1.73. Wider layout rehearsals and bench 重装 / healer swaps did not help. A Final
+Assault lab (the same seeds replayed with one change at the boss prep) put the lever on layers: all active bonds ×2 lifted
+the leader pool share 40.8 → 58.1 % (wins 3 → 13), +150 focus layers to 57.8 %, +20 LP to 45.4 %, +20 funds to 42.7 %.
+Changes: positional traits (front / behind / row / rightmost / copies / 阿戈尔's devour) arranged first in the rehearsal,
+which now breaks leak and leader-damage ties by the layers the battle gained; skill points on skill-start engines and
+equipment on 维多利亚 members; an engine's second and third copies worth more (an elite doubles its layers); Final
+Assault lineups with a strong bench piece rehearsed. Normal picks: solo 1–160 30.7 → 32.0 %, co-op 1–80 23.0 → 27.4 %;
+职业队 forced 22.3 → 26.4 %, focus layers 90 → 100. Withdrawn: 助力 valued for its +2 / +4 on every active bond (its
+members crowd the main bond out: co-op 27.4 → 20.3 %), an engine-first layout candidate (co-op fell), engine merges ×2.
+The focus bond still activates late (median R6–R8; its members come slowly at shop levels 1–2), the next lever.
+

@@ -921,6 +921,8 @@ function buyScore(m, ps, id, ctx) {
       const keep = ctx.keep.has(base);
       if (copies + 1 >= mergeNeed(m, base)) s += keep ? 40 : 30;
       else s += keep ? 14 : ctx.pairs < MAX_PAIRS && c.tier <= 3 ? 6 : 1;
+      // §37.37: an elite engine gains twice the layers in the same board slot — its pair and its merge are worth more
+      if (m.round < m.gd.bossRound && engineFor(m, c, ctx.focus)) s += copies + 1 >= mergeNeed(m, base) ? ENGINE_BONUS : ENGINE_BONUS / 2;
     }
   }
   if (!ctx.owned.bases.has(base)) s += bondValue(m, c, ctx.owned, ctx.focus, ctx.second);
@@ -1749,7 +1751,9 @@ function refreshValue(m, ps, ctx) {
     const e = m.pool.entries.get(b);
     if (!e || e.left <= 0 || e.tier > L) continue;
     const pShop = 1 - (1 - e.left / total) ** slots;
-    if (k + 1 >= mergeNeed(m, b)) v += pShop * MERGE_HIT;
+    // §37.37: the third copy of an engine pair doubles the engine's layers
+    const engine = m.round < m.gd.bossRound && engineFor(m, m.gd.chess(b), ctx.focus);
+    if (k + 1 >= mergeNeed(m, b)) v += pShop * (MERGE_HIT + (engine ? 2 * ENGINE_BONUS : 0));
     else if (ctx.keep.has(b)) v += pShop * PAIR_HIT;
   }
   // §35.63: a refresh may also show a missing member of the focus core bond on its way to the top threshold
@@ -2323,6 +2327,36 @@ export function* advisorSpendSteps(m, ps) {
 }
 
 /**
+ * §37.37 [ASSUMED] Final Assault lineups: a strong bench piece (tier 4+ or an elite) in place of the deployed piece whose loss
+ * costs the least lineup score, at most FA_LINEUPS of them (the best swaps first). They join the boss rehearsal, which keeps
+ * the one that deals the most leader damage — the default lineup unless one deals more.
+ */
+const FA_LINEUPS = 2;
+function faLineups(m, ps, ctx, chosen) {
+  if (m.wave || m.round !== m.gd.bossRound) return [];
+  const gd = ps.gd || m.gd;
+  const inSet = new Set(chosen.map((p) => p.uid));
+  const bench = ps.allChess().filter((p) => !inSet.has(p.uid) && ps.find(p.uid)?.area !== 'board'
+    && ((chessRec(m, p.id, ps)?.tier || 0) >= 4 || gd.isGolden(p.id)));
+  const cands = [];
+  const seenIn = new Set();
+  for (const q of bench) {
+    if (seenIn.has(q.id)) continue;
+    seenIn.add(q.id);
+    let best = null;
+    for (let i = 0; i < chosen.length; i++) {
+      if (chosen[i].kind !== 'chess') continue;
+      const trial = chosen.slice();
+      trial[i] = q;
+      const sc = lineupScore(m, ps, trial, ctx);
+      if (!best || sc > best.s) best = { s: sc, set: trial, outUid: chosen[i].uid, inPiece: q };
+    }
+    if (best) cands.push(best);
+  }
+  return cands.sort((a, b) => b.s - a.s || a.inPiece.uid - b.inPiece.uid).slice(0, FA_LINEUPS);
+}
+
+/**
  * Choose the deployed set and put it on the best tiles for this round's enemies (planLayout). `final`: the last
  * arrangement of the prep — candidate plans are rehearsed (see createRehearsal) when the match allows it; with `defer`
  * the default plan is placed now and the rehearsal job is returned (the caller runs it and applies `job.best`), and with
@@ -2368,19 +2402,338 @@ export function* arrangeSteps(m, ps, { final = false, defer = false, delegate = 
   } else {
     plans.push(yield* planLayoutSteps(m, ps, chosen));
   }
+  let rehChosen = chosen;
+  let extra = 0;
+  if (final && !m.wave && bossWaveOf(m, ps) && m.botRehearsal > 0) {
+    const alts = faLineups(m, ps, ctx, chosen);
+    if (alts.length) {
+      const base = new Set(chosen.map((p) => p.uid));
+      for (const pl of plans) pl.lineup = base;
+      const altPlans = [];
+      for (const a of alts) {
+        const pl = yield* planLayoutSteps(m, ps, a.set, { ...LAYOUT_PARAMS, ...REHEARSAL_VARIANTS[0] });
+        pl.lineup = new Set(a.set.map((p) => p.uid));
+        pl.swapOut = a.outUid;
+        pl.swapIn = a.inPiece.uid;
+        altPlans.push(pl);
+      }
+      plans.splice(1, 0, ...altPlans);
+      rehChosen = [...chosen, ...alts.map((a) => a.inPiece)];
+      extra = altPlans.length;
+    }
+  }
   if (candidatePlans && final && m.wave && m.botRehearsal > 1) {
     plans = yield* candidatePlans(m, ps, chosen, plans);
   }
+  // §37.37 the positional traits' arrangement goes first (the rehearsal still prefers one that leaks less or kills more)
+  if (final && plans.length) {
+    const pos = yield* positionPlanSteps(m, ps, chosen, plans[0], ctx);
+    if (pos) { if (plans[0].lineup) pos.lineup = plans[0].lineup; plans.unshift(pos); }
+  }
   if ((defer || adaptive) && plans.length > 1) {
     const limits = adaptive ? { stage: 3, tickBudget: 6 * (!m.wave && bossWaveOf(m, ps) ? faRehearsalTicks(m) : rehearsalCap(m.wave?.timeLimit)) } : null;
-    const job = yield* createRehearsalSteps(m, ps, chosen, plans,
-      { delegate, pooled, limits, candidateLimit: adaptive ? 8 : m.botRehearsal });
+    const job = yield* createRehearsalSteps(m, ps, rehChosen, plans,
+      { delegate, pooled, limits, candidateLimit: (adaptive ? 8 : m.botRehearsal) + extra });
     if (!defer && job) job.run();
-    yield* applyPlanSteps(m, ps, chosen, !defer && job ? job.best : plans[0]);
+    yield* applyPlanSteps(m, ps, !defer && job ? rehChosen : chosen, !defer && job ? job.best : plans[0]);
     return job;
   }
-  yield* applyPlanSteps(m, ps, chosen, plans.length > 1 ? rehearse(m, ps, chosen, plans) : plans[0]);
+  yield* applyPlanSteps(m, ps, rehChosen, plans.length > 1 ? rehearse(m, ps, rehChosen, plans) : plans[0]);
   return null;
+}
+
+// ---------------------------------------------------------------------------------------------------
+// §37.37 positional traits
+
+/** [ASSUMED] §37.37: a free operator each prep (歌蕾蒂娅 / 余 with 3 in their row), in layers of the focus bond. */
+const GIFT_VALUE = 12;
+/** [ASSUMED] §37.37: the share of the default plan's layout value a positional placement may give up. */
+const POSITION_TOLERANCE = 0.03;
+
+const numOr = (v, d = 0) => (Number.isFinite(Number(v)) && v !== '' && v != null ? Number(v) : d);
+
+/**
+ * §37.37 The 特质 of a chess whose gain depends on where it stands, from the garrison data (cached per chess id):
+ *   pos      SERVER_ADD_BOND_POSITION — the active bonds of the piece in front (空弦, 引星棘刺) or behind (断崖, 见行者) +n
+ *   row      SERVER_ADD_BOND_METHOD same_row (蛇屠箱) — the bond + n per chess in the row
+ *   row3     conditionkey character_same_row (歌蕾蒂娅, 余, 蕾缪安) — needs `need` chess in the row, itself included
+ *   rowSkill bond_add_type by_charcount_samerow (塑心) — each skill start, + n per chess in the row (capped per battle)
+ *   grant    a granted IN_BATTLE layer trait (give_garrison_id; 寒芒克洛丝, 华法琳, 凛御银灰) — the piece in front carries it
+ *   mostRight the same, 「同一行最右边」 (远牙) — the rightmost chess of the row carries it
+ *   extra    act1autochess_gar_event_addition_cnt (魔王) — the trait gains of the piece in front + n
+ *   trigger  SERVER_TRIGGER_ANOTHER scope front (铃兰) — the 获得时 layers of the piece in front again
+ *   copy     SERVER_FRONT_SAME_EFFECT_PREP_START / _FIN (白面鸮 / 塞雷娅) — the prep trait of the piece in front again
+ * "身前一格" is one tile along the piece's facing, "身后" one tile against it (server/sim/content/support/meta.js
+ * frontPiece); 同一行 counts the chess of the board row.
+ */
+export function positionTraitsOf(m, ps, c) {
+  if (!c) return [];
+  const cache = m._botPosTraits || (m._botPosTraits = new Map());
+  if (cache.has(c.chessId)) return cache.get(c.chessId);
+  const gd = ps?.gd || m.gd;
+  const out = [];
+  for (const gid of c.garrisonIds || []) {
+    const g = gd.garrison(gid);
+    if (!g) continue;
+    const bb = g.bb || {}, bs = g.bbStr || {};
+    const before = out.length;
+    if (g.effectKey === 'SERVER_ADD_BOND_POSITION') out.push({ kind: 'pos', off: bs.dir === 'behind' ? -1 : 1, n: numOr(bb.count) });
+    else if (g.effectKey === 'SERVER_ADD_BOND_METHOD' && bs.add_method === 'same_row') out.push({ kind: 'row', bonds: bondList(bs.bond), n: numOr(bb.multi, 1) });
+    else if (bs.conditionkey === 'character_same_row') out.push({ kind: 'row3', need: numOr(bb.check_count, 3), g });
+    else if (bs.bond_add_type === 'by_charcount_samerow') out.push({ kind: 'rowSkill', cap: numOr(bb.max_add_count_per_battle, 10), n: numOr(bb.bond_add_count_multi, numOr(bb.bond_add_count, 1)) });
+    else if ((bs.give_garrison_id ?? bs.give_garrion_id) && g.eventType === 'IN_BATTLE') {
+      // a granted trait, targets read from the text as garrisons/battle.js grantTargets does; only one that adds layers
+      const g2 = gd.garrison(bs.give_garrison_id ?? bs.give_garrion_id);
+      const desc = String(g.desc || '');
+      if (g2 && /层数\+/.test(String(g2.desc || '')) && !desc.includes('所有')) {
+        out.push(desc.includes('同一行最右边') ? { kind: 'mostRight', g2 } : { kind: 'grant', g2, need: bs.check_bond_id || null });
+      }
+    } else if (g.effectKey === 'act1autochess_gar_event_addition_cnt') out.push({ kind: 'extra', n: numOr(bb.extra_cnt, 1) });
+    else if (g.effectKey === 'SERVER_TRIGGER_ANOTHER' && bs.scope === 'front' && bs.event === 'SERVER_GAIN') out.push({ kind: 'trigger' });
+    else if (g.effectKey === 'SERVER_FRONT_SAME_EFFECT_PREP_START') out.push({ kind: 'copy', event: 'SERVER_PREP_START' });
+    else if (g.effectKey === 'SERVER_FRONT_SAME_EFFECT_PREP_FIN') out.push({ kind: 'copy', event: 'SERVER_PREP_FIN' });
+    for (let i = before; i < out.length; i++) out[i].on = g.eventType;
+  }
+  cache.set(c.chessId, out);
+  return out;
+}
+
+/** §37.37 A plan as a board: piece per tile key, tile and facing per uid. */
+function planView(plan, pieces) {
+  const at = new Map(), keyOf = new Map(), dirOf = new Map(), byUid = new Map(pieces.map((p) => [p.uid, p]));
+  for (const [uid, key] of plan) {
+    const p = byUid.get(uid);
+    if (!p) continue;
+    at.set(key, p); keyOf.set(uid, key); dirOf.set(uid, planDir(plan, uid));
+  }
+  return { at, keyOf, dirOf, byUid };
+}
+
+/** The chess `k` tiles in front of a tile along `dir` (negative k: behind), or null. */
+function chessAhead(view, key, dir, k = 1) {
+  const [r, c] = parseKey(key);
+  const [dr, dc] = rotateOffset(0, k, dir);
+  const q = view.at.get(tileKey(r + dr, c + dc));
+  return q && q.kind === 'chess' ? q : null;
+}
+
+const rowChess = (view, key) => { const r = parseKey(key)[0]; let n = 0; for (const [k, q] of view.at) if (q.kind === 'chess' && parseKey(k)[0] === r) n++; return n; };
+
+/**
+ * §37.37 [ASSUMED] Layers per prep, in focus-bond equivalents, that a prep trait `g` run by `self` (standing on `key`
+ * facing `dir`) adds — the value of a 白面鸮 / 塞雷娅 copy. Numbers the text leaves open are estimates: 3 operators
+ * gained and 3 refreshes a round, 15 funds spent.
+ */
+function prepTraitValue(m, ps, view, W, self, key, dir, g, copied = false) {
+  const bb = g.bb || {}, bs = g.bbStr || {};
+  const sum = (bonds, n) => bonds.reduce((s, b) => s + n * W(b), 0);
+  const own = chessRec(m, self.id, ps)?.bonds || [];
+  const hand = ps.hand.filter((p) => p && p.kind === 'chess').length;
+  switch (g.effectKey) {
+    case 'SERVER_ADD_BOND_CHESS_ALL': return sum(own, numOr(bb.count));
+    case 'SERVER_ADD_BOND': return sum(bondList(bs.bond), numOr(bb.count));
+    case 'SERVER_ADD_MULTIPLE_BOND': { const counts = bondList(bs.count).map(Number); return bondList(bs.bond).reduce((s, b, i) => s + (counts[i] ?? counts[counts.length - 1] ?? 0) * W(b), 0); }
+    case 'SERVER_ADD_BOND_METHOD': {
+      const per = { shoplv: ps.shop.level, round_gain_char: 3, hand_count: hand, same_row: rowChess(view, key), same_bond_diff_lv: 3 }[bs.add_method] ?? 0;
+      return sum(bondList(bs.bond), per * numOr(bb.multi, 1));
+    }
+    case 'SERVER_ADD_BOND_POSITION': {
+      const other = chessAhead(view, key, dir, bs.dir === 'behind' ? -1 : 1);
+      return sum(own, numOr(bb.count)) + (other ? sum(chessRec(m, other.id, ps)?.bonds || [], numOr(bb.count)) : 0);
+    }
+    case 'SERVER_ADD_BOND_ACTIVATED_MOST_LAYER': return numOr(bb.count);
+    case 'SERVER_ADD_ACT_BOND_DIFF_LV_MOST_LAYER': return 3 * numOr(bb.multi, 1);
+    case 'SERVER_ADD_REFRESH_CNT_MULTIPLIER_BOND_LAYER': return sum(bondList(bs.bond), Math.min(numOr(bb.max_layer, Infinity), 3 * numOr(bb.multiplier)));
+    case 'SERVER_ADD_BOND_IN_HAND': return hand * numOr(bb.count) * 0.5;
+    case 'SERVER_ADD_BOND_ROUND_COIN_COST': return sum(bondList(bs.bond), Math.floor(15 / Math.max(1, numOr(bb.count, 1))) * numOr(bb.layer));
+    // a 白面鸮 copy of 歌蕾蒂娅 / 余 skips the row gate (garrisons/meta.js rowCondition, #473)
+    case 'SERVER_POOL_CHAR': case 'SERVER_MOST_BOND': return copied || bs.conditionkey !== 'character_same_row' || rowChess(view, key) >= numOr(bb.check_count, 3) ? GIFT_VALUE : 0;
+    case 'SERVER_TRIGGER_ANOTHER': { const q = chessAhead(view, key, dir); return q ? [...acquireLayers(m, ps, chessRec(m, q.id, ps)).entries()].reduce((s, [b, n]) => s + n * W(b), 0) : 0; }
+    case 'SERVER_GAIN_RANDOM_EQUIP_CHESS_IN_POOL': case 'SERVER_POOL_EQUIP': return 4;
+    case 'SERVER_GAIN_FREE_REFRESH_COUNT': case 'SERVER_ONCE_GOLD_WITH_BOND_CONDITION': return 2;
+    default: return 0;
+  }
+}
+
+/** §37.37 [ASSUMED] Layers a position-dependent trait of `p` (on `key`, facing `dir`) adds per round, in focus-bond equivalents. */
+function positionTraitValue(m, ps, view, W, p, key, dir, t, final) {
+  // the Final Assault gains no battle layers (finalAssault.js layerGainsEnabled false) and has no prep after it
+  if (final && (t.on === 'IN_BATTLE' || t.on === 'SERVER_PREP_START')) return 0;
+  const front = () => chessAhead(view, key, dir, 1);
+  const bondsOf = (q) => chessRec(m, q.id, ps)?.bonds || [];
+  const sum = (bonds, n) => bonds.reduce((s, b) => s + n * W(b), 0);
+  switch (t.kind) {
+    case 'pos': { const q = chessAhead(view, key, dir, t.off); return q ? sum(bondsOf(q), t.n) : 0; }
+    case 'row': return sum(t.bonds, t.n * rowChess(view, key));
+    case 'row3': {
+      if (rowChess(view, key) < t.need) return 0;
+      if (t.g.eventType === 'SERVER_PREP_START') return final ? 0 : GIFT_VALUE;
+      const bs = t.g.bbStr || {};
+      return sum(bondList(bs.bond_id), 3 * numOr(t.g.bb?.bond_add_count, 1));
+    }
+    case 'rowSkill': return Math.min(t.cap, 2 * t.n * rowChess(view, key));
+    case 'grant': {
+      const q = front();
+      if (!q || (t.need && !bondsOf(q).includes(t.need))) return 0;
+      const bb = t.g2.bb || {}, bs = t.g2.bbStr || {};
+      const n = bs.key === 'act1autochess_gar_event_useskill' ? 0.5 * numOr(bb.max_add_count_per_battle, 10) : 4;
+      return sum(bs.bond_type === 'bond_self' ? bondsOf(q) : bondList(bs.bond_id), n);
+    }
+    case 'mostRight': {
+      // the rightmost chess of the row carries it on every deployment: a piece that falls and redeploys (砾, 幽灵鲨, 瑕光 …) gains it again
+      const r = parseKey(key)[0];
+      let q = null, qc = -Infinity;
+      for (const [k, x] of view.at) { const [rr, cc] = parseKey(k); if (x.kind === 'chess' && rr === r && cc > qc) { q = x; qc = cc; } }
+      if (!q) return 0;
+      const gd = ps.gd || m.gd;
+      const stacker = (chessRec(m, q.id, ps)?.garrisonIds || []).some((gid) => /gar_event_(selfdead|onstart)$/.test(gd.garrison(gid)?.bbStr?.key || ''));
+      const bb = t.g2.bb || {};
+      return sum(bondList(t.g2.bbStr?.bond_id), Math.min(numOr(bb.max_add_count_per_battle, 24), numOr(bb.bond_add_count, 4) * (stacker ? 4 : 1)));
+    }
+    case 'extra': { const q = front(); return q ? bondsOf(q).filter((b) => engineFor(m, chessRec(m, q.id, ps), b)).reduce((s, b) => s + 4 * t.n * W(b), 0) : 0; }
+    case 'trigger': { const q = front(); return q ? [...acquireLayers(m, ps, chessRec(m, q.id, ps)).entries()].reduce((s, [b, n]) => s + n * W(b), 0) : 0; }
+    case 'copy': {
+      // 进入休整期时 pays at the next prep: nothing after the Final Assault prep
+      if (final && t.event === 'SERVER_PREP_START') return 0;
+      const q = front();
+      if (!q) return 0;
+      const gd = ps.gd || m.gd;
+      let v = 0;
+      for (const gid of chessRec(m, q.id, ps)?.garrisonIds || []) {
+        const g = gd.garrison(gid);
+        if (g && g.eventType === t.event && !String(g.effectKey).startsWith('SERVER_FRONT_SAME_EFFECT')) v += prepTraitValue(m, ps, view, W, p, key, dir, g, true);
+      }
+      return v;
+    }
+    default: return 0;
+  }
+}
+
+/**
+ * §37.37 [ASSUMED] 阿戈尔's battle-start devour (server/sim/content/bonds/core.js devour): every member marks the operator in
+ * front of it, through marked members along their own facing; each devoured operator adds its tier once (an IN_BATTLE gain:
+ * none in the Final Assault). The layers land even when the 5000 物理流失 knocks the target out.
+ */
+function devourValue(m, ps, view, W, final) {
+  const w = W('egirShip');
+  if (!w || final) return 0;
+  const isMember = (q) => (chessRec(m, q.id, ps)?.bonds || []).includes('egirShip');
+  const done = new Set();
+  let v = 0;
+  for (const [uid, key0] of view.keyOf) {
+    const p = view.byUid.get(uid);
+    if (p.kind !== 'chess' || !isMember(p)) continue;
+    let key = key0, dir = view.dirOf.get(uid);
+    const seen = new Set([uid]);
+    for (let guard = 0; guard < 8; guard++) {
+      const q = chessAhead(view, key, dir, 1);
+      if (!q || seen.has(q.uid)) break;
+      seen.add(q.uid);
+      if (!done.has(q.uid)) { done.add(q.uid); v += chessRec(m, q.id, ps)?.tier || 1; }
+      if (!isMember(q)) break;
+      key = view.keyOf.get(q.uid); dir = view.dirOf.get(q.uid);
+    }
+  }
+  return v * w;
+}
+
+/** §37.37 Σ positional trait value of a plan. */
+function positionValue(m, ps, view, W, final) {
+  let v = devourValue(m, ps, view, W, final);
+  for (const [uid, key] of view.keyOf) {
+    const p = view.byUid.get(uid);
+    if (p.kind !== 'chess') continue;
+    for (const t of positionTraitsOf(m, ps, chessRec(m, p.id, ps))) v += positionTraitValue(m, ps, view, W, p, key, view.dirOf.get(uid), t, final);
+  }
+  return v;
+}
+
+/**
+ * §37.37 [ASSUMED] The default plan rearranged for the positional traits: moves of a trait piece (any legal tile and
+ * facing, swapping with the occupant) and of a partner onto the tile a trait looks at, kept while the positional value
+ * grows and the layout value stays within POSITION_TOLERANCE of the default plan's. It goes first in the rehearsal: a
+ * candidate that leaks less or kills more still beats it. Null when nothing improves.
+ */
+export function* positionPlanSteps(m, ps, chosen, base, ctx) {
+  const pgd = ps.gd || m.gd;
+  const chess = chosen.filter((p) => p.kind === 'chess' && base.has(p.uid));
+  const final = !m.wave && m.round === m.gd.bossRound;
+  // the lineup's bonds (as lineupScore reads them): a layer counts on an active bond, the focus most
+  const board = new Map(chess.map((p, i) => [`x${i}`, p]));
+  const inSet = new Set(chess.map((p) => p.uid));
+  const bonds = computeBonds(pgd, { board, hand: ps.hand.filter((p) => p && !inSet.has(p.uid)), layers: ps.layers, bondCountBonus: ps.bondCountBonus });
+  const W = (b) => (!bonds[b]?.active ? 0 : b === ctx.focus ? 1 : pgd.bond(b)?.isCore ? 0.5 : 0.3);
+  const devour = !final && W('egirShip') > 0;
+  const traitUids = chess.filter((p) => positionTraitsOf(m, ps, chessRec(m, p.id, ps)).length
+    || (devour && (chessRec(m, p.id, ps)?.bonds || []).includes('egirShip'))).map((p) => p.uid);
+  if (!traitUids.length) return null;
+  const model = fieldModel(m, ps);
+  const deployMap = ps.deployMap();
+  const recs = new Map(chess.map((p) => [p.uid, rangeRec(ps, pgd.chess(p.id))]));
+  const legal = new Map(chess.map((p) => [p.uid, new Set(legalTiles(deployMap, placeClass(ps, pgd.chess(p.id))).map(([r, c]) => tileKey(r, c)))]));
+  const units = new Map();
+  const unit = (uid, key, dir) => {
+    const k = `${uid}|${key}|${dir}`;
+    if (!units.has(k)) { const [r, c] = parseKey(key); units.set(k, unitOf(recs.get(uid), key, r, c, dir, model)); }
+    return units.get(k);
+  };
+  const layoutValue = (plan) => {
+    const layout = new Layout(model, LAYOUT_PARAMS);
+    for (const p of chess) if (recs.get(p.uid)) layout.units.push(unit(p.uid, plan.get(p.uid), planDir(plan, p.uid)));
+    return layout.value();
+  };
+  const score = (plan) => positionValue(m, ps, planView(plan, chess), W, final);
+  const floor = (() => { const v = layoutValue(base); return v - POSITION_TOLERANCE * Math.abs(v); })();
+  let cur = new LayoutPlan(base);
+  for (const [u, d] of base.dirs) cur.dirs.set(u, d);
+  let curT = score(cur);
+  const t0 = curT;
+  const tryPlan = (plan, best) => {
+    const T = score(plan);
+    if (T <= curT + 0.5 || (best && T < best.T)) return best;
+    const L = layoutValue(plan);
+    if (L < floor || (best && T === best.T && L <= best.L)) return best;
+    return { plan, T, L };
+  };
+  // move `uid` to `key` facing `dir`; the occupant (if any) takes the vacated tile when it may stand there
+  const moved = (plan, uid, key, dir) => {
+    const from = plan.get(uid);
+    const occ = [...plan.entries()].find(([u, k]) => k === key && u !== uid)?.[0];
+    if (occ != null && !legal.get(occ)?.has(from)) return null;
+    const next = new LayoutPlan(plan);
+    for (const [u, d] of plan.dirs) next.dirs.set(u, d);
+    next.set(uid, key); next.dirs.set(uid, dir);
+    if (occ != null) next.set(occ, from);
+    return next;
+  };
+  for (let iter = 0; iter < 4; iter++) {
+    let best = null;
+    for (const uid of traitUids) {
+      for (const key of legal.get(uid)) {
+        for (const dir of PLAN_DIRS) {
+          const next = moved(cur, uid, key, dir);
+          if (next) best = tryPlan(next, best);
+        }
+      }
+      // a partner onto the tiles this piece's traits look at (front, behind, its row)
+      const key = cur.get(uid), dir = planDir(cur, uid);
+      const [r] = parseKey(key);
+      const spots = new Set();
+      for (const k of [1, -1]) { const [pr, pc] = parseKey(key); const [dr, dc] = rotateOffset(0, k, dir); spots.add(tileKey(pr + dr, pc + dc)); }
+      for (const [rr, cc] of legalTiles(deployMap, 'all')) if (rr === r) spots.add(tileKey(rr, cc));
+      for (const q of chess) {
+        if (q.uid === uid) continue;
+        for (const spot of spots) {
+          if (!legal.get(q.uid)?.has(spot) || cur.get(q.uid) === spot) continue;
+          for (const qd of PLAN_DIRS) { const next = moved(cur, q.uid, spot, qd); if (next) best = tryPlan(next, best); }
+        }
+      }
+      yield;
+    }
+    if (!best) break;
+    cur = best.plan; curT = best.T;
+  }
+  return curT > t0 + 0.5 ? cur : null;
 }
 
 /**
@@ -2506,6 +2859,16 @@ export function createContactPrepSteps() {
  * 凯瑟琳 device left beside a tile its operator moved away from would face nothing (QA, playtest #6).
  */
 function* applyPlanSteps(m, ps, chosen, target) {
+  if (target && target.lineup) {
+    if (target.swapOut != null) {
+      const out = ps.find(target.swapOut), inn = ps.find(target.swapIn);
+      if (out && inn && out.area === 'board' && inn.area !== 'board') {
+        const [r, c] = parseKey(out.key);
+        tryDo(() => ps.move(target.swapIn, { area: 'board', row: r, col: c }, pieceDir(out.piece)));
+      }
+    }
+    chosen = chosen.filter((p) => target.lineup.has(p.uid));
+  }
   liftTokens(ps);
   // move pieces onto their targets (board → board moves swap; hand → board may swap an occupant back to the hand)
   for (let pass = 0; pass < 3; pass++) {
@@ -2731,12 +3094,36 @@ export function itemTarget(m, ps, item, ctx = context(m, ps), usePlan = true) {
     const member = list.find((p) => free(p) && (chessRec(m, p.id, ps)?.bonds || []).includes(rec.requiresBondId));
     if (member) return member;
   }
+  // §37.37 [ASSUMED] skill points first on a piece whose skill start adds layers to an active bond (菲莱, 百炼嘉维尔, 莎草 …):
+  // the per-cast layers, doubled on the focus, halved when one cast already reaches the per-battle cap
+  if (rec.category === 'SP') {
+    const castValue = (p) => {
+      let v = 0;
+      for (const gid of chessRec(m, p.id, ps)?.garrisonIds || []) {
+        const g = gd.garrison(gid);
+        if (g?.eventType !== 'IN_BATTLE' || g.bbStr?.key !== 'act1autochess_gar_event_useskill') continue;
+        const add = Number(g.bb?.bond_add_count) || Number(g.bb?.bond_add_count_multi) || 1;
+        const cap = Number(g.bb?.max_add_count_per_battle) || Infinity;
+        const bonds = g.bbStr.bond_type === 'bond_by_id' ? bondList(g.bbStr.bond_id) : [ctx.focus];
+        for (const b of bonds) if (b && ps.bonds[b]?.active) v += add * (b === ctx.focus ? 2 : 1) * (cap <= add ? 0.5 : 1);
+      }
+      return v;
+    };
+    const caster = list.filter(free).map((p) => [p, castValue(p)]).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1] || a[0].uid - b[0].uid)[0];
+    if (caster) return caster[0];
+  }
   // damage dealers carry equipment first (healers / non-attackers last); survival items on blockers first
   const dealer = (p) => { const c = chessRec(m, p.id, ps); return c && !isHealer(c) && c.attackKind !== 'none'; };
   const blocker = (p) => isBlocker(chessRec(m, p.id, ps));
-  const order = rec.category === 'SURVIVAL'
+  let order = rec.category === 'SURVIVAL'
     ? [...list.filter(blocker), ...list.filter((p) => !blocker(p) && dealer(p)), ...list.filter((p) => !blocker(p) && !dealer(p))]
     : [...list.filter(dealer), ...list.filter((p) => !dealer(p))];
+  // §37.37 [ASSUMED] 维多利亚 raises the damage of its members that carry equipment ("携带装备的【维多利亚】干员造成的伤害提升"):
+  // with it the active focus, they come first for everything but survival items
+  if (ctx.focus === 'victoriaShip' && ps.bonds.victoriaShip?.active && rec.category !== 'SURVIVAL') {
+    const vic = (p) => (chessRec(m, p.id, ps)?.bonds || []).includes('victoriaShip');
+    order = [...order.filter(vic), ...order.filter((p) => !vic(p))];
+  }
   return order.find(free) || null;
 }
 

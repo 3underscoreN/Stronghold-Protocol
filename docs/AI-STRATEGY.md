@@ -726,3 +726,13 @@ Assault lineups with a strong bench piece rehearsed. Normal picks: solo 1–160 
 members crowd the main bond out: co-op 27.4 → 20.3 %), an engine-first layout candidate (co-op fell), engine merges ×2.
 The focus bond still activates late (median R6–R8; its members come slowly at shop levels 1–2), the next lever.
 
+### Cycle 10: no level 6 (§37.38, round54)
+
+The gold flow showed little waste (1.6 pieces a game sold without ever being deployed), so the level curve was swept with
+paired standard errors (handoff/round54/band/paired.mjs; 80 co-op seeds carry about 3–4 points of SE, 160 solo seeds 1–2).
+Capping the bots at shop level 5 (still at R9) was the clear winner: the R11 level-up's 10–11 funds and the tier-6 copies
+in every later shop cost more than tier 6 brings. Solo 终极 1–320 pool completion 30.9 → 38.7 % (+7.8 ± 1.5 paired), co-op
+1–160 25.7 → 30.0 % (+4.4 ± 2.0), 职业队 forced 26.4 → 29.0 % (focus layers 100 → 111); 绝境 flat. Later or earlier curves,
+an L4 cap, and holding the level while leaking were worse or flat. Co-op's R7–R9 (enemy HP ×3.58 / ×4.30) leave 0.3–0.9
+perfect seats a game, so 联防 rarely runs then and the team loses 18–23 LP a round: a defensive anchor seat is the open lever.
+

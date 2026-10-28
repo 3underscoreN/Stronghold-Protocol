@@ -203,7 +203,10 @@ test('绝境 Hidden Core vs 假想敌：铳 (隐秘核心): a 碎铳之簧 passe
   const b = createBattleFromSpec(specs[0], new DataSource(DATA, null), { sharedBoss: pool, recordEvents: false, quiet: true });
   // the springs stand from the start, 铳 enters ≈ 10 game s later
   for (let i = 0; i < 1200 && !b.enemies.some((e) => e.alive && e.isBoss); i++) b.step();
-  const springs = b.enemies.filter((e) => e.alive && /enemy_90(18|19|20)_actrp/.test(e.defId));
+  // an operator's sleep (阿罗玛's bubble: 沉睡 = 无敌) may hold every spring at this moment: wait for one awake
+  const spring = (e) => e.alive && !e.s.flags.sleep && /enemy_90(18|19|20)_actrp/.test(e.defId);
+  for (let i = 0; i < 1200 && !b.enemies.some(spring); i++) b.step();
+  const springs = b.enemies.filter(spring);
   const gun = b.enemies.find((e) => e.alive && e.isBoss);
   const op = b.allyUnits.find((u) => u.kind === 'op' && u.alive);
   assert.ok(springs.length >= 1 && gun && op, 'springs, 铳 and an operator on the field');

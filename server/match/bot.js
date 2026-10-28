@@ -166,8 +166,12 @@ const BENCH_BUDGET = 6;
  * Shop level the bot aims for at the start of round r (index = round). §35.63: L5 at R9 and L6 at R11 (were R10 / R12),
  * the community rhythm 3-5-7-9 (BV19UXZBJExQ reply; handoff/round51 RESEARCH §3.2) plus one step: 终极 solo boards
  * reached the Final Assault short of leader damage, and bots on this curve dealt about 40 % more of it.
+ * §37.38 [ASSUMED]: no L6 (BOT_MAX_LEVEL). Its 10–11 funds at R11 and the tier-6 copies in every later shop cost more
+ * than tier 6 brings: capped at L5 the bots field more elites (R13 1.6 → 2.1) and layers (171 → 202), and 终极 solo pool
+ * completion rose 32.0 → 39.0 % on 160 seeds (+6.9 ± 2.3 paired). L4 as the cap, or L5 a round earlier or later, was worse.
  */
-const LEVEL_TARGET = [1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 6, 6, 6];
+const LEVEL_TARGET = [1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 5, 5, 5, 5, 5];
+const BOT_MAX_LEVEL = 5;
 /**
  * AI 托管 of a human with 自选 picks (0.2.0; bots field none): the buy score of one of the player's own slotted pieces —
  * the operator the player chose to field (follow-up #13: under AI 托管 they were rarely bought) — and the 调度中心 is
@@ -2042,6 +2046,8 @@ export function levelUp(m, ps, { spare = false, policy = null } = {}) {
       }
     }
     const r = m.round;
+    // §37.38: never past BOT_MAX_LEVEL — except toward a human's own 自选 slots of the next level (AI 托管)
+    if (ps.shop.level >= BOT_MAX_LEVEL && !diyOpensAt(ps, ps.shop.level + 1)) return;
     const target = LEVEL_TARGET[Math.min(LEVEL_TARGET.length - 1, r)];
     const nextTarget = LEVEL_TARGET[Math.min(LEVEL_TARGET.length - 1, r + 1)];
     // early levels only once the board is full (units first); later a 6-unit core is enough

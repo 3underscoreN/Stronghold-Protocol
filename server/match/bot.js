@@ -140,7 +140,9 @@ const CORE_HIT = 20;
 /**
  * [ASSUMED] §35.63 sustain floor: from HEAL_FROM the lineup values its first healer at HEAL_FIRST and a second one from R9
  * at HEAL_SECOND (buyScore: the first healer +14, a second from R8 +4). Bots fielded 0.1–0.5 healers in R4–R13 and died
- * to DOT / ELEMENT / SPECIAL rounds; 终极 co-op seats alive at the Final Assault rose with it.
+ * to DOT / ELEMENT / SPECIAL rounds; 终极 co-op seats alive at the Final Assault rose with it. §37.40 [ASSUMED]: solo only
+ * since — co-op enemies carry 2–2.5× the solo HP from R7, and with the bots of §37.37–§37.39 a co-op seat does better
+ * fielding a dealer in that slot (see COOP_BENCH_BUDGET for the whole co-op change).
  */
 const HEAL_FROM = 5;
 const HEAL_FIRST = 16;
@@ -162,6 +164,13 @@ const MAX_PAIRS = 4;
 const MAX_REFRESHES = 16;
 /** Spare bench units kept beyond the lineup at the prep start (pairs first). */
 const BENCH_BUDGET = 6;
+/**
+ * §37.40 [ASSUMED] co-op play: a co-op seat keeps 4 spare bench units (solo 6), fields no healer for its own sake (the
+ * HEAL_FIRST / HEAL_SECOND lineup terms are solo only) and takes the bounty card with the least enemy HP (bountyPick).
+ * 终极 co-op 1–320 against §37.39: 35.9 → 43.7 % pool completion (+7.8 ± 2.5 paired), wins 46 → 73; leaving one of the
+ * three out cost 3.4 / 3.7 / 4.3 points. In solo none of them helped (−2.8 / −0.2 / −0.3).
+ */
+const COOP_BENCH_BUDGET = 4;
 /**
  * Shop level the bot aims for at the start of round r (index = round). §35.63: L5 at R9 and L6 at R11 (were R10 / R12),
  * the community rhythm 3-5-7-9 (BV19UXZBJExQ reply; handoff/round51 RESEARCH §3.2) plus one step: 终极 solo boards
@@ -249,7 +258,7 @@ export function botPickCard(m, ps, cards, available) {
     if (!c) continue;
     let s = 0;
     if (c.kind === 'item') s = 8 + (c.tier || 1) * 4 + (canUseItem(m, ps, { id: c.id }) ? 0 : -8);
-    else if (c.kind === 'bounty') s = bountyScore(m, ps, c);
+    else if (c.kind === 'bounty') s = m.isSolo ? bountyScore(m, ps, c) : -bountyHp(m, c) / 1000;
     else if (c.kind === 'tactic') s = tacticScore(m, ps, c);
     s += m.rngBots() * 0.5;
     if (s > bestScore) { bestScore = s; best = i; }
@@ -303,6 +312,15 @@ export function bountyKillChance(m, ps, card) {
 
 /** Exposure (× HP) a bounty enemy needs for a 63 % kill chance (conservative: it fights beside the wave). */
 const BOUNTY_KILL = 2;
+
+/**
+ * §37.40 [ASSUMED]: the HP a bounty card adds to the own battles (its enemy's max HP × count) — a co-op seat takes the card
+ * with the least: the draft is bounty-only at R3 / R9, the enemies fight at the co-op HP scale (×3.6–6.7 from R7), and a
+ * leak costs the seat its perfect battle (联防) besides the LP.
+ */
+function bountyHp(m, c) {
+  return (Number(m.gd.enemy(c.enemyKey)?.stats?.maxHp) || 0) * (Number(c.count) || 1);
+}
 
 /**
  * Expected value of a bounty card: per battle it lasts, P(kill) × coin (kill payout) or P(kill)^n × coin (perfect
@@ -836,7 +854,7 @@ function lineupScore(m, ps, set, ctx, handSlots = countFree(ps.hand)) {
   v -= Math.max(0, Math.min(2, ctx.roles.blockers) - blockers) * 15;
   if (ctx.fly > 0 && ctx.roles.antiAir > 0 && air === 0) v -= 12;
   v -= Math.max(0, healers - 2) * 10;
-  if (m.round >= HEAL_FROM) v += Math.min(healers, 1) * HEAL_FIRST + (healers >= 2 && m.round >= 9 ? HEAL_SECOND : 0);
+  if (m.round >= HEAL_FROM && m.isSolo) v += Math.min(healers, 1) * HEAL_FIRST + (healers >= 2 && m.round >= 9 ? HEAL_SECOND : 0);
   return v;
 }
 
@@ -1873,7 +1891,7 @@ export function sellJunk(m, ps, policy = null) {
     for (const p of sales) if (ps.find(p.uid) && !advisorProtected(m, ps, p)) tryDo(() => ps.sell(p.uid));
     return;
   }
-  for (const { p } of all.slice(BENCH_BUDGET)) tryDo(() => ps.sell(p.uid));
+  for (const { p } of all.slice(m.isSolo ? BENCH_BUDGET : COOP_BENCH_BUDGET)) tryDo(() => ps.sell(p.uid));
   for (const { p } of junk.slice(0, 4)) if (m.round >= 5 && ps.find(p.uid)) tryDo(() => ps.sell(p.uid));
 }
 

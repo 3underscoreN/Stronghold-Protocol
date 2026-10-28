@@ -750,3 +750,13 @@ into refreshes, and refreshes at the capped level are worth far more (capping th
 29.0 → 33.4 % (+4.5 ± 1.9). Withdrawn: merge farming at level 5, level timing tweaks, expected-layer engine values, the Grok
 band-fix bundle, freezing engines, a higher full-board buy floor. Solo bots would gain ~4 more points by always taking 歌利亚
 (43.0 % vs 34.5 % for the other bands), a benchmark gain rather than better play — left to the owner.
+
+### Cycle 12: co-op play (§37.40, round54)
+
+A long sweep of economy knobs and ablations around §37.39 (items before level 5, buy floors, bench budgets, junk sales, no
+layer trades, no layer refreshes, Grok's second-pass misallocation list, a 远见 economy, collecting 投资人, greedy engines
+with spare LP, a damage-only Final Assault lineup) found nothing for solo: the economy looks near a local optimum. Three
+co-op-only signals that were each inside the noise — no healer term in the lineup, a bench budget of 4, the bounty card
+with the least enemy HP — together lifted 终极 co-op 1–320 from 35.9 to 43.7 % (+7.8 ± 2.5 paired, wins 46 → 73), and
+leaving any one out cost 3.4–4.3 points. Co-op enemies carry 2–2.5× the solo HP from R7, so a dealer is worth more than a
+healer there, and a bounty enemy at that scale costs the seat its perfect battle as well as LP.

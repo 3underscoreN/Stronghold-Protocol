@@ -63,8 +63,8 @@
 //      a tile g.move refuses is skipped for the next best one.
 //   5. items by what they do (itemTarget): equipment on the strongest deployed damage dealers (survival items on
 //      blockers, bond signature items on a member), 信标 on a bench single, 拟态物质 on a pair, 博士投影 (both
-//      qualities) on the strongest normal operator, 突变细胞 on the least valuable normal single below 6阶 (cellTarget:
-//      never an elite or a pair member; the operator its transformation gains joins the bench — the buy loop's bench
+//      qualities) on the strongest normal operator, 突变细胞 on the highest-tier normal single below 6阶 outside the focus
+//      bond (cellTarget: never an elite or a pair member; the operator its transformation gains joins the bench — the buy loop's bench
 //      shed leaves a piece gained since the last prep alone, rememberOwned — and steps 3–4 of the next prep deploy it
 //      like any owned unit), bond items on a focus member; Arts (useArt): 画卷 copies the most valuable
 //      deployed operator, 教鞭 / “神秘顾客” are used after a perfect battle and kept otherwise (consume-on-equip items /
@@ -3225,9 +3225,11 @@ function morphPlan(m, ps, morph, ctx) {
 /**
  * Whom the bot injects with 突变细胞 (after the battle its carrier — deployed or on the bench: every owned carrier's item
  * hooks run — is destroyed and a random operator one tier higher joins the bench, PlayerState.transformChess; the next
- * prep's lineup step deploys it like any owned unit, so a deployed carrier only costs a re-placement): the least
- * valuable normal operator below 6阶 with a free equip slot — never an elite, never one of a merge pair (the merge
- * progress would be lost), nobody already carrying a cell. null: the cell waits in the hand.
+ * prep's lineup step deploys it like any owned unit, so a deployed carrier only costs a re-placement): a normal operator
+ * below 6阶 with a free equip slot — never an elite, never one of a merge pair (the merge progress would be lost), nobody
+ * already carrying a cell. §37.45 [ASSUMED]: the highest tier first (TIER_POWER grows with the tier, so a 5阶 that becomes
+ * a random 6阶 gains more than a 1阶 that becomes a 2阶; the cell comes back every round, 1 → 6 in five battles), a
+ * member of the focus bond last (its count would drop), then the least valuable. null: the cell waits in the hand.
  */
 export function cellTarget(m, ps, ctx = context(m, ps)) {
   const gd = ps?.gd || m.gd;
@@ -3236,7 +3238,8 @@ export function cellTarget(m, ps, ctx = context(m, ps)) {
   for (const p of ps.allChess()) {
     if (gd.isGolden(p.id) || gd.tierOf(p.id) >= 6 || !slotFree(m, ps, p)) continue;
     if ((p.items || []).some((it) => isMutationCell(gd, it.id)) || (ctx.copies.get(gd.baseIdOf(p.id)) || 0) >= 2) continue;
-    const v = pieceValue(m, ps, p, ctx);
+    const member = !!ctx.focus && (chessRec(m, p.id, ps)?.bonds || []).includes(ctx.focus);
+    const v = (member ? 1000 : 0) - 100 * gd.tierOf(p.id) + pieceValue(m, ps, p, ctx) * 0.01;
     if (v < bestV || (v === bestV && p.uid < best.uid)) { bestV = v; best = p; }
   }
   return best;

@@ -790,3 +790,14 @@ tier; a seed from 调和 plus just enough members and a bonus for that tier (§3
 A forced sweep of the weak strategies then found the second clear mistake: 娜仁图亚 replaces the 6 萨尔贡 tier with lending a
 skill-starting member's equipment, and §37.39 left the bots with nothing to lend; buying combat items for the 萨尔贡 members
 lifts it from 24.4 to 31.4 % (§37.44). Strategy effects the bots ignore are the cheapest gains left.
+
+### Cycle 15: all 40 strategies forced, 突变细胞 on the highest tier (§37.45, round57)
+
+Forcing each of the 40 strategies for 40 solo 终极 games ranks them for the bots (mean 40.5 %): passive combat buffs lead
+(阿米娅 57, 华法琳 55, 埃芒加德 53; 歌利亚 50 despite its 45 LP), effects the bots barely use trail (克莱门莎 20, 老鲤 24,
+巫恋 26, 铃兰 28). The clear misuse this time was 昆图斯's 突变细胞: it comes back after every transformation, and the bots
+kept injecting their least valuable 1–2阶 piece; injecting the highest tier outside the focus walks a piece from 1阶 to
+6阶 in five battles and lifts that strategy by +6.6 (320 forced seeds, wins 42 → 52). 杜宾's 教鞭 is worth about nothing by the bots' own
+estimate (the best of three 战术特训 cards pays 1–3 funds only on a perfect battle), yet never using it, or using it only
+when that estimate is positive, cost wins; 夕's same-name pairs and not valuing worn recruit items moved nothing. The
+contributed ioleta strategy (opt-in) is 30 points below legacy on forced 伊奥莱塔.

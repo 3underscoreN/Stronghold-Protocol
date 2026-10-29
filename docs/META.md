@@ -288,7 +288,7 @@ probes reserve the bought operator's slot first. [ASSUMED] Scores within `1e-9` 
 pre-emptive hand shedding requires more owned operators than the deploy cap (#315). Items by what they do: equipment on the strongest deployed
 damage dealers (survival items on blockers first, bond signature items on a member), 信标 on a bench single (never the
 lineup when a bench single exists), 拟态物质 on a pair (never on 2 copies whose pool is out), 博士投影 (both qualities — neither takes an elite) on the strongest
-normal operator, 突变细胞 on the least valuable normal operator below 6阶 (deployed or benched — never an elite, never one
+normal operator, 突变细胞 on the highest-tier normal operator below 6阶, a member of the focus bond last, then the least valuable (§37.45; deployed or benched — never an elite, never one
 of a merge pair, never one already carrying a cell; it comes back after every transformation, and a cell left in temp
 gets a hand slot made for it, `makeHandRoom` — on a bot's own seat by destroying the cheapest other hand item if no
 chess can be sold, never a human's item under AI 托管 — on such a seat any item left in temp with a full hand gets a

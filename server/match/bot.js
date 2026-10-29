@@ -393,7 +393,7 @@ function ownedBonds(m, ps, exclude = null) {
     const c = chessRec(m, p.id, ps);
     for (const b of (c && c.bonds) || []) counts.set(b, (counts.get(b) || 0) + 1);
   }
-  return { counts, bases: seen };
+  return { counts, bases: seen, ps };
 }
 
 /**
@@ -474,6 +474,14 @@ function bandMain(m, ps) {
  * priority) is the focus, owned members or not: the plan's direction leads legacy's procurement instead of competing with
  * it at +6..+30 per member. §37.35: without a plan, a 职业队 strategy's core bond (bandMain) is the focus the same way.
  */
+/**
+ * §37.41 [ASSUMED]: in solo, a prior on the focus core bond from the bots' own 终极 solo results by final focus (17155c3c,
+ * seeds 1–80: 萨尔贡 65.8 %, 谢拉格 60.1, 拉特兰 47.4, 维多利亚 47.0, 卡西米尔 41.4, 阿戈尔 35.9, 叙拉古 34.9, 炎 26.6 of the
+ * leader pool), (share − 45) / 3 points where a member counts 10. Judged on seeds 81–320; in co-op it did not help (the
+ * teammates' claims already spread the bonds).
+ */
+const FOCUS_PRIOR = { sargonShip: 7, kjeragShip: 5, lateranoShip: 0.8, victoriaShip: 0.6, kazimierzShip: -1.2, egirShip: -3, siracusaShip: -3.4, yanShip: -6 };
+
 export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
   const mates = teammateBonds(m, ps);
   // [ASSUMED] Reconsider the focus when a teammate's public main changes, including within the same prep.
@@ -494,7 +502,8 @@ export function bondPlan(m, ps, owned = ownedBonds(m, ps)) {
     if (!k) continue;
     const s = k * 10 + Math.min(4, pool.reach.get(id) || 0) + Math.min(6, (ps.layers[id] || 0) / 10)
       // [ASSUMED] A public teammate claim outweighs commitment plus one member, but not an established large core.
-      + (id === prev ? (k >= 3 ? CORE_LOCK : 6) : 0) - (mates.has(id) ? 30 : 0) + Math.min(0.9, (pool.supply.get(id) || 0) / 100);
+      + (id === prev ? (k >= 3 ? CORE_LOCK : 6) : 0) - (mates.has(id) ? 30 : 0) + Math.min(0.9, (pool.supply.get(id) || 0) / 100)
+      + (m.isSolo ? FOCUS_PRIOR[id] || 0 : 0);
     if (s > bestS) { bestS = s; focus = id; }
   }
   if (main) focus = main;
@@ -735,6 +744,11 @@ function bondValue(m, c, owned, focus, second = null) {
     if (hits) v += 10 * w;
     else if (th.some((t) => t > n + 1 && t - (n + 1) <= 1)) v += 3 * w;
     if (bond.thresholdTemplate === 'count_threshold_downward') v -= n > 0 ? 12 : 0; // 独行 breaks with a second member
+    // §37.41: 调和 (缪尔赛思) with the held bond item of a focus whose top tier needs her: two members (调和 + the conversion)
+    if (bond.activeType === 'MANI' && owned.ps && (owned.counts.get(focus) || 0) >= 1 && topAboveCap(m, owned.ps, focus) && holdsBondItem(m, owned.ps, focus)) {
+      const fn = owned.counts.get(focus) || 0, fth = m.gd.bond(focus).thresholds;
+      v += 28 + 10 + (fth.some((t) => t > fn && t <= fn + 2) ? 14 : 0) + (fn >= 2 && fn < fth[fth.length - 1] ? CORE_MEMBER : 0);
+    }
     if (b === focus) v += 10 + (bond.isCore && n >= 2 && n < th[th.length - 1] ? CORE_MEMBER : 0);
     else if (b === second) v += 4;
     else if (committed && bond.isCore && !hits) v -= 4;
@@ -2185,6 +2199,7 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
     let bestS = 0;
     let bestPrice = Infinity;
     let bestMerges = false;
+    const wantedSlots = new Set();
     let cur = null;
     ps.shop.slots.forEach((s, i) => {
       if (!s || s.sold) return;
@@ -2242,8 +2257,10 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
         // R10); as refreshes those funds buy more — 5–6 → 6–8 refreshes a round in R11–R14, merges 4.6 → 5.4 a game, board
         // elites at R14 3.3 → 3.8 (职业队 forced), and more wins on every 终极 bench. Tier ≥ 4 items only was no better.
         // Equipment from 机变 cards, rewards and strategies is still taken and equipped; a custom policy (伊奥莱塔's
-        // strategy bots) keeps its own equipment rule.
-        if (!customPolicy && !requested && !ps.completesItemMerge(s.id)) return;
+        // strategy bots) keeps its own equipment rule. §37.41: the elite items, the dolls and the bond item of a focus whose
+        // top tier needs 缪尔赛思 are bought too (shopItemWanted).
+        const wanted = !customPolicy && !advisor && shopItemWanted(m, ps, s.id, ctx);
+        if (!customPolicy && !requested && !wanted && !ps.completesItemMerge(s.id)) return;
         if (!advisorItemAllowed(m, ps, s)) return;
         if (customPolicy && (policy.canLevel(m, ps) || (canRefresh && freeSlot(ps.hand) >= 0
           && policy.searchTargets(m, ps).some(t => ps.funds >= refreshCost
@@ -2253,7 +2270,8 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
         if (ps.funds - price < reserve && !ps.completesItemMerge(s.id)) return;
         const carriers = [...ps.board.values()].filter((p) => p.kind === 'chess' && slotFree(m, ps, p, gd.item(s.id))).length;
         if (!carriers && !requested) return;
-        sc = 6 + (gd.tierOf(s.id) || 1) * 3 - price + (ps.completesItemMerge(s.id) ? 10 : 0) + (requested ? 24 : 0);
+        sc = 6 + (gd.tierOf(s.id) || 1) * 3 - price + (ps.completesItemMerge(s.id) ? 10 : 0) + (requested ? 24 : 0) + (wanted ? WANTED_ITEM : 0);
+        if (wanted) wantedSlots.add(i);
       }
       const merges = s.kind === 'chess' && ps.completesChessMerge(s.id)
         && (!customPolicy || policy.core(m, ps, s.id));
@@ -2266,12 +2284,19 @@ export function* buyLoopSteps(m, ps, { fillOnly = false, maxRefreshes = 0, polic
     // a full board buys only what improves it (merge progress, a lineup upgrade), and only when it is worth more than
     // the refreshes its price would pay for (each may show the third copy of a held pair, refreshValue)
     let buy = best >= 0 && bestS >= (boardFull ? BUY_FULL_MIN : 3);
-    if (buy && boardFull && canRefresh && !bestMerges) {
+    if (buy && boardFull && canRefresh && !bestMerges && !wantedSlots.has(best)) {
       const price = Math.max(1, ps.priceOf(ps.shop.slots[best]));
       if (bestS < refreshValue(m, ps, ctx) * price / Math.max(1, refreshCost)) buy = false;
     }
     if (buy) {
+      const bought = ps.shop.slots[best];
       if (!buyOffer(m, ps, best)) return;
+      // §37.41: a doll is destroyed at once (equipping consumes it), so it never holds a hand slot through the prep
+      if (bought?.kind === 'item' && dollItem(m, ps, bought.id)) {
+        const piece = [...ps.hand, ...ps.temp].find((p) => p && p.kind === 'item' && p.id === bought.id);
+        const target = piece && itemTarget(m, ps, piece, context(m, ps));
+        if (target) tryDo(() => ps.equip(piece.uid, target.uid));
+      }
       continue;
     }
     // §37.35 [ASSUMED] 职业队: the refreshes the opening strategy rigs toward its core bond (杜遥夜's first two, 佩佩's after a
@@ -3031,6 +3056,104 @@ const itemEffect = (rec) => (rec && Array.isArray(rec.buffs) && rec.buffs[0] && 
 const isMutationCell = (gd, itemId) => itemEffect(gd.item(itemId)) === 'char_chess_transformation_equip';
 
 /**
+ * §37.41 [ASSUMED]: the shop items that make an elite are bought despite §37.39 — ahead of the refreshes (ELITE_ITEM added
+ * to the buy score, no refresh comparison): 博士投影 (5 funds, the wearer turns elite at the next round start: itemTarget's
+ * strongest normal deployed operator) while a deployed normal operator of tier ≥ ELITE_ITEM_TIER can wear it before the
+ * Final Assault prep, and 拟态物质 (4 funds, the third copy of a held pair) while a normal pair of tier ≥ ELITE_ITEM_TIER
+ * still has copies in the pool. The community's 「拟态物质在差一只合成时买」 (handoff/round55 community research 装6).
+ * Paired 终极 results in docs/history/0.3.4.md §37.41.
+ */
+const WANTED_ITEM = 40;
+const ELITE_ITEM_TIER = 4;
+function eliteItem(m, ps, id) {
+  const gd = ps.gd || m.gd;
+  const rec = gd.item(id);
+  switch (itemEffect(rec)) {
+    case 'equip_round_start_upgrade_char':
+      return m.round < gd.bossRound && [...ps.board.values()].some((p) => p.kind === 'chess' && !gd.isGolden(p.id)
+        && gd.tierOf(p.id) >= ELITE_ITEM_TIER && slotFree(m, ps, p, rec));
+    case 'use_equip_reward_char_chess':
+      for (const [base, k] of copyCounts(m, ps)) {
+        if (k + 1 < mergeNeed(m, base) || gd.tierOf(base) < ELITE_ITEM_TIER) continue;
+        if ((typeof ps.poolOf === 'function' ? ps.poolOf(base) : m.pool).left(base) > 0) return true;
+      }
+      return false;
+    default:
+      return false;
+  }
+}
+
+/**
+ * §37.41 [ASSUMED] (the maintainer, 2026-10-29: 「前期精打细算玩偶以及全时期的见钱眼开玩偶也都是非常不错的道具」): in solo,
+ * 精打细算玩偶 (3 funds, +1 fund every later round start) while DOLL_ROUNDS_LEFT rounds remain before the Final Assault and
+ * 见钱眼开玩偶 (1 fund, +2 next round) before the Final Assault prep. Bought like the elite items and destroyed at once. Not
+ * in co-op: there the mid-game enemies carry 2–2.5× the solo HP and the funds held back cost seats (history §37.41).
+ */
+const DOLL_ROUNDS_LEFT = 5;
+function dollItem(m, ps, id) {
+  if (!m.isSolo) return false;
+  const key = itemEffect((ps.gd || m.gd).item(id));
+  if (key === 'gain_coin_when_round_start') return m.gd.bossRound - m.round >= DOLL_ROUNDS_LEFT;
+  if (key === 'use_equip_gain_coin_when_next_round_start') return m.round < m.gd.bossRound;
+  return false;
+}
+
+/** A loose piece: a bond item (giveBondId, not a 变形同构体) / a 变形同构体 (canGiveBond). */
+const isBondItem = (gd, p) => !!p && p.kind === 'item' && !!gd.item(p.id)?.giveBondId && !gd.item(p.id)?.canGiveBond;
+const isMorph = (gd, p) => !!p && p.kind === 'item' && !!gd.item(p.id)?.canGiveBond;
+/** The bond's top threshold exceeds the deploy cap (炎 9 > 8): only 调和 plus a conversion reaches it. */
+const topAboveCap = (m, ps, bond) => { const th = bond ? (ps.gd || m.gd).bond(bond)?.thresholds : null; return Array.isArray(th) && th.length > 0 && th[th.length - 1] > ps.deployCap; };
+/** A held (loose) bond item of `bond`. */
+const holdsBondItem = (m, ps, bond) => [...ps.hand, ...ps.temp].some((p) => isBondItem(ps.gd || m.gd, p) && (ps.gd || m.gd).item(p.id).giveBondId === bond);
+
+/**
+ * §37.41 [ASSUMED] 9 炎 (the maintainer: 「大炎盟约缪尔赛斯转炎可以做到8人口9大炎」, 「一般只买自己准备玩的阵容可能需要的转职装备，
+ * 方便后面出缪尔赛斯的时候用转职球引入强力外援」): for a focus whose top tier exceeds the deploy cap, one of its bond items is
+ * bought from NINE_FROM and held; 缪尔赛思 then counts as two of its members (bondValue: 调和 + her conversion) and the
+ * 变形同构体 she brings goes on her with it (morphPlan). Every other bond item goes on as before.
+ */
+const NINE_FROM = 6;
+function nineItem(m, ps, id, ctx) {
+  const gd = ps.gd || m.gd, rec = gd.item(id);
+  if (!rec || rec.canGiveBond || !ctx.focus || rec.giveBondId !== ctx.focus || !topAboveCap(m, ps, ctx.focus)) return false;
+  return m.round >= NINE_FROM && m.round < gd.bossRound && countFree(ps.hand) >= 2 && !holdsBondItem(m, ps, ctx.focus);
+}
+
+/** §37.41: the shop items bought despite §37.39 (ahead of the refreshes, WANTED_ITEM). */
+const shopItemWanted = (m, ps, id, ctx) => eliteItem(m, ps, id) || dollItem(m, ps, id) || nineItem(m, ps, id, ctx);
+
+/**
+ * §37.41 [ASSUMED]: where a 变形同构体 goes (it grants the bond of a bond item worn with it) — the operator of chooseLineup's set
+ * whose granted bond (a worn bond item, or a held one equipped with it) raises lineupScore most beyond the items' own
+ * value; null: none gains (the morph then waits for a focus whose top tier needs it, else takes the usual target).
+ */
+function morphPlan(m, ps, morph, ctx) {
+  const gd = ps.gd || m.gd;
+  const policy = morphSlotPolicy(ruleOption(m?.rules, 'morphPairing'), (it) => !!gd.item(it?.id)?.canGiveBond);
+  const cur = chooseLineup(m, ps, ctx);
+  const base = lineupScore(m, ps, cur.set, ctx);
+  const loose = [...ps.hand, ...ps.temp].filter((p) => isBondItem(gd, p));
+  const morphRec = gd.item(morph.id);
+  let best = null;
+  for (const P of cur.set) {
+    const saved = P.items;
+    const items = saved || [];
+    if (items.some((it) => gd.item(it.id)?.canGiveBond) || !policy.accepts(items, morphRec)) continue;
+    const free = policy.slotCap(gd.equipPerChess) - policy.slotsUsed(items) - (policy.occupies(morphRec) ? 1 : 0);
+    const options = [];
+    if (free >= 0 && items.some((it) => gd.item(it.id)?.giveBondId)) options.push(null);
+    if (free >= 1) for (const X of loose) options.push(X);
+    for (const X of options) {
+      P.items = [...items, { id: morph.id, uid: -1 }, ...(X ? [{ id: X.id, uid: -2 }] : [])];
+      const gain = lineupScore(m, ps, cur.set, ctx) - base - 5 * (X ? 2 : 1); // unitBase counts 5 per worn item
+      P.items = saved;
+      if (gain > (best ? best.gain : 0.5)) best = { P, X, gain };
+    }
+  }
+  return best;
+}
+
+/**
  * Whom the bot injects with 突变细胞 (after the battle its carrier — deployed or on the bench: every owned carrier's item
  * hooks run — is destroyed and a random operator one tier higher joins the bench, PlayerState.transformChess; the next
  * prep's lineup step deploys it like any owned unit, so a deployed carrier only costs a re-placement): the least
@@ -3194,9 +3317,20 @@ function useArt(m, ps, item, ctx) {
   if (key) { const [r, c] = parseKey(key); tryDo(() => ps.useArt(item.uid, r, c)); }
 }
 
-function equipItems(m, ps) {
+export function equipItems(m, ps) {
   const gd = ps?.gd || m.gd;
   const tried = new Set();
+  // §37.41: a 变形同构体 goes where its granted bond gains most (morphPlan, with the bond item the plan names); without such a
+  // carrier it waits for a focus whose top tier needs it (topAboveCap), else the usual target below takes it
+  for (const morph of [...ps.hand, ...ps.temp].filter((p) => isMorph(gd, p))) {
+    const mctx = context(m, ps);
+    const plan = morphPlan(m, ps, morph, mctx);
+    if (!plan && !(m.round < gd.bossRound && topAboveCap(m, ps, mctx.focus))) continue;
+    tried.add(morph.uid);
+    if (!plan || (plan.X && !tryDo(() => ps.equip(plan.X.uid, plan.P.uid)))) continue;
+    tryDo(() => ps.equip(morph.uid, plan.P.uid));
+  }
+  let heldNine = false;
   for (let guard = 0; guard < 12; guard++) {
     const item = [...ps.hand, ...ps.temp].find((p) => p && p.kind === 'item' && canUseItem(m, ps, p) && !tried.has(p.uid));
     if (!item) break;
@@ -3205,6 +3339,11 @@ function equipItems(m, ps) {
     const ctx = context(m, ps);
     const rec = gd.item(item.id);
     if (rec && rec.itemType === 'MAGIC') { useArt(m, ps, item, ctx); continue; }
+    // §37.41: one bond item of a focus whose top tier needs 缪尔赛思 waits for her 变形同构体 until the Final Assault prep
+    if (!heldNine && isBondItem(gd, item) && rec.giveBondId === ctx.focus && m.round < gd.bossRound && topAboveCap(m, ps, ctx.focus)) {
+      heldNine = true;
+      continue;
+    }
     const target = itemTarget(m, ps, item, ctx);
     if (!target) continue;
     if (!tryDo(() => ps.equip(item.uid, target.uid)) && advisorPlan(m, ps)?.items?.equip?.length) {

@@ -213,6 +213,9 @@ test('绝境 Hidden Core vs 假想敌：铳 (隐秘核心): a 碎铳之簧 passe
   const seen = [];
   b.on('damaged', (c) => { if (c.target === gun) seen.push(c); }, { priority: -1e9 });
   const sp = springs.find((x) => x.defId === 'enemy_9019_actrpb') || springs[0];
+  // a damage-taken debuff applied after the share (an operator's 脆弱, 奥术 …) multiplies after it observes — the injury
+  // chain runs in buff order (attack/effects.js) — so clear those for the hit that measures the 1:1 pass-through
+  for (const x of [...sp.buffs]) if (x.mods && (x.mods.dmgTakenMul != null || x.mods.trueTakenMul != null)) b.removeBuff(sp, x.key);
   const pool0 = pool.hp;
   const dealt = b.dealDamage(op, sp, { amount: 50000, type: 'true', canDodge: false });
   assert.ok(dealt > 0, 'the spring took damage');

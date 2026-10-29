@@ -760,3 +760,16 @@ co-op-only signals that were each inside the noise — no healer term in the lin
 with the least enemy HP — together lifted 终极 co-op 1–320 from 35.9 to 43.7 % (+7.8 ± 2.5 paired, wins 46 → 73), and
 leaving any one out cost 3.4–4.3 points. Co-op enemies carry 2–2.5× the solo HP from R7, so a dealer is worth more than a
 healer there, and a bounty enemy at that scale costs the seat its perfect battle as well as LP.
+
+### Cycle 13: elite items, dolls, 9 炎, a solo focus prior (§37.41, round55)
+
+The owner's experience (buy little equipment except the 转职 item the plan needs; 缪尔赛思 converted to 炎 gives 9 炎 with 8
+deployed; 精打细算玩偶 early and 见钱眼开玩偶 any time) and Grok's community research (handoff/round55) gave about a dozen
+literal rules; most were null or negative for the bots, because they cost refreshes (§37.39) or a bench slot — 缪尔赛思
+valued as a focus member, morphs held for a carrier, bond items for every focus (a held 维多利亚 hammer cost 哈洛德 15
+points), 维多利亚 equipment, 寻呼模块, community secondary bonds per focus. What held: the two shop items that make an elite
+(博士投影, 拟态物质) in every mode; in solo, the dolls plus a prior on the focus bond taken from the bots' own results by final
+focus (each inside the noise, together +4.3); and the 9 炎 conversion for the one bond whose top tier exceeds the deploy
+cap (杜遥夜 +6.8). 终极 solo 1–320 40.4 → 46.0 % (+5.7 ± 1.8, wins 31 → 44), 职业队 9×80 30.5 → 32.8 % (wins 59 → 79).
+Co-op bundles that differ only slightly swing 2–4 points even on 320 seeds, so co-op keeps only the changes with a
+consistent sign.

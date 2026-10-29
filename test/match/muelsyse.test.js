@@ -4,7 +4,7 @@
 // normal operator of tier ≥ 4, at the latest until the Final Assault prep.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { botPrepBegin, equipItems } from '../../server/match/bot.js';
+import { botPrepBegin, equipItems, arrange } from '../../server/match/bot.js';
 import { makeMatch, give, giveItem, legalTileFor, DATA } from './harness.js';
 
 const MLYSS = 'chess_char_6_11_a'; // 缪尔赛思 (her gain brings a 变形同构体)
@@ -88,4 +88,38 @@ test('§37.42: in the Final Assault prep the 博士投影 that promotes at once 
   giveItem(m, ps, PROMO_NOW, 'hand');
   equipItems(m, ps);
   assert.ok(!ps.hand.some((p) => p && p.id === PROMO_NOW));
+});
+
+// §37.43 9 炎: one-swap climbs stopped at 6 炎 even with 缪尔赛思 converted and seven 炎 owned (a 7th member crosses no tier),
+// and morphPlan never put the 变形同构体 on her while she stood on the bench.
+const DAGGER = 'chess_item_3_04_e_a'; // 炎国短刀 (gives 炎 with a 变形同构体)
+/** Normal tier-6 operators outside 炎 (a strong pair of outsiders, as in the round-56 review games). */
+const strongOutsiders = (m, n) => Object.values(DATA.chess).filter((c) => c.visible && !c.isGolden && c.tier === 6
+  && !c.bonds.includes('yanShip') && !c.bonds.some((b) => DATA.bonds[b]?.activeType === 'MANI') && m.pool.left(c.chessId) >= 1).slice(0, n);
+
+test('§37.43: with 炎 the focus, 缪尔赛思 on the bench takes the held 炎国短刀 and 变形同构体', (t) => {
+  const { m, ps } = setup(t, 12);
+  for (const c of membersOf(m, 'yanShip', 6)) deploy(m, ps, c);
+  // elite outsiders: before her conversion the lineup leaves her on the bench, where morphPlan never looked
+  for (const c of Object.values(DATA.chess).filter((c) => c.visible && c.isGolden && c.tier === 6 && !c.bonds.includes('yanShip')
+    && !c.bonds.some((b) => DATA.bonds[b]?.activeType === 'MANI')).slice(0, 2)) deploy(m, ps, c);
+  const her = give(m, ps, MLYSS, 'hand');
+  giveItem(m, ps, DAGGER, 'hand');
+  giveItem(m, ps, MORPH, 'hand');
+  equipItems(m, ps);
+  assert.deepEqual((her.items || []).map((it) => it.id).sort(), [DAGGER, MORPH].sort());
+});
+
+test('§37.43: 缪尔赛思 converted and seven 炎 owned — the lineup fields her with seven 炎 for 9 炎', (t) => {
+  const { m, ps } = setup(t, 12);
+  const yan = membersOf(m, 'yanShip', 7);
+  assert.equal(yan.length, 7, 'seven 炎 operators');
+  for (const c of yan.slice(0, 6)) deploy(m, ps, c);
+  for (const c of strongOutsiders(m, 2)) deploy(m, ps, c);
+  give(m, ps, yan[6].chessId, 'hand');
+  const her = give(m, ps, MLYSS, 'hand');
+  for (const id of [DAGGER, MORPH]) { const it = giveItem(m, ps, id, 'hand'); ps.equip(it.uid, her.uid); }
+  arrange(m, ps);
+  assert.equal(ps.bonds.yanShip.count, 9, '7 炎 + 缪尔赛思 converted + 调和');
+  assert.ok([...ps.board.values()].some((p) => p.uid === her.uid), 'she is deployed');
 });

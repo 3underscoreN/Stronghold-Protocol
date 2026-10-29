@@ -93,7 +93,7 @@ import { deriveSeed } from '../sim/rng.js';
 import { freeSlot, countFree, legalTiles, canPlace, positionClass, placeClass, basePositionClass, parseKey, tileKey, FIELD, pieceDir, boardTileOf, BOSS_MIRROR_COL } from './board.js';
 import { rotateOffset, normDir, mirrorDir, oppositeDir } from '../sim/dir.js';
 import { itemKey } from './gamedata.js';
-import { computeBonds } from './bondsMeta.js';
+import { computeBonds, pieceBonds } from './bondsMeta.js';
 import { isFlyKey, bountySpawns } from './waves.js';
 import { previewPlayer } from './preview.js';
 import { bossPoolHp, SharedBossPool } from './finalAssault.js';
@@ -127,6 +127,8 @@ const FOCUS_MEMBER = 4;
  * linear weight never fielded one (boards stayed 3 + 3 + 3) even with 6 distinct members owned.
  */
 const CORE_TOP_TIER = 30;
+/** §37.43: lineup bonus for the top tier of a core bond whose top threshold exceeds the deploy cap (炎 9). */
+const TOP_ABOVE_CAP = 60;
 /** [ASSUMED] §35.62: bench members of a core bond with at least this many distinct owned members are not sold as junk. */
 const CORE_KEEP_OWNED = 4;
 /**
@@ -860,6 +862,9 @@ function lineupScore(m, ps, set, ctx, handSlots = countFree(ps.hand)) {
     const bond = gd.bond(id);
     const w = bond && bond.isCore ? 14 : 9;
     v += b.tier * w + Math.min(12, (b.layers || 0) * 0.1) + (id === ctx.focus ? 6 : 0) + (bond?.isCore && b.tier >= 2 ? CORE_TOP_TIER : 0);
+    // §37.43 [ASSUMED]: the top tier of a core bond whose top threshold exceeds the deploy cap (炎 9: two 炎佑, ×1.5 attack,
+    // −90 % damage taken) is worth more than one more tier
+    if (bond?.isCore && Array.isArray(bond.thresholds) && b.tier === bond.thresholds.length && bond.thresholds[bond.thresholds.length - 1] > ps.deployCap) v += TOP_ABOVE_CAP;
   }
   let blockers = 0;
   let air = 0;
@@ -895,6 +900,19 @@ function chooseLineup(m, ps, ctx) {
       if (bases.has(base) || !(chessRec(m, p.id, ps)?.bonds || []).includes(id)) continue;
       bases.add(base);
       members.push(p);
+    }
+    // §37.43: a top tier above the deploy cap (炎 9) also seeds from 调和 (缪尔赛思: +1 to every core bond with a real member,
+    // +1 more when her items grant the bond) plus just enough distinct members — one swap at a time never gets there
+    const top = bond.thresholds[bond.thresholds.length - 1];
+    const mani = top > cap ? seed.find((p) => (chessRec(m, p.id, ps)?.bonds || []).some((b) => gd.bond(b)?.activeType === 'MANI')) : null;
+    const need = mani ? top - 1 - (pieceBonds(gd, mani, m.rules).includes(id) ? 1 : 0) : 0;
+    if (mani && need >= 1 && need + 1 <= cap && members.length >= need) {
+      const pick = [mani, ...members.slice(0, need)];
+      const inPick = new Set(pick.map((p) => p.uid));
+      const start = pick.concat(seed.filter((p) => !inPick.has(p.uid))).slice(0, cap);
+      const used = new Set(start.map((p) => p.uid));
+      const run = climbLineup(m, ps, ctx, start, seed.filter((p) => !used.has(p.uid)));
+      if (run.score > best.score + 0.5) best = run;
     }
     const t = bond.thresholds.filter((x) => x > 3 && x <= Math.min(cap, members.length)).pop();
     if (!t) continue;
@@ -3352,6 +3370,18 @@ export function equipItems(m, ps) {
   // carrier it waits for a focus whose top tier needs it (topAboveCap), else the usual target below takes it
   for (const morph of [...ps.hand, ...ps.temp].filter((p) => isMorph(gd, p))) {
     const mctx = context(m, ps);
+    // §37.43 [ASSUMED]: with such a focus 缪尔赛思 takes its bond item and the 变形同构体 wherever she stands (one slot, two
+    // members of the focus) — morphPlan only looks at the current lineup, which she is rarely in before her conversion
+    if (mctx.focus && topAboveCap(m, ps, mctx.focus)) {
+      const her = ps.allChess().find((p) => (chessRec(m, p.id, ps)?.bonds || []).some((b) => gd.bond(b)?.activeType === 'MANI')
+        && !(p.items || []).some((it) => gd.item(it.id)?.canGiveBond));
+      const X = [...ps.hand, ...ps.temp].find((p) => isBondItem(gd, p) && gd.item(p.id).giveBondId === mctx.focus);
+      if (her && X && slotFree(m, ps, her, gd.item(X.id)) && tryDo(() => ps.equip(X.uid, her.uid))) {
+        tried.add(morph.uid);
+        tryDo(() => ps.equip(morph.uid, her.uid));
+        continue;
+      }
+    }
     const plan = morphPlan(m, ps, morph, mctx);
     if (!plan && !(m.round < gd.bossRound && topAboveCap(m, ps, mctx.focus))) continue;
     tried.add(morph.uid);

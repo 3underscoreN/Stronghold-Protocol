@@ -784,4 +784,6 @@ she came. A per-round review of lost games (handoff/diag/review.mjs) found the c
 strategy's round-1 item, an advanced 博士投影 that promotes at once, went on a tier-1 piece; kept for a tier-4 piece it lifts
 that strategy from 37.0 to 47.5 % (160 forced seeds, wins 10 → 22). Rehearsal-judged lineup alternatives (a strong bench piece or a whole
 power lineup instead of weak focus members) kept more seats alive but cost solo wins in every version, and late tier-6
-picks by lineup gain lost to buyScore's merge and engine value. Next lever seen: 9 炎 stalls at the 7th real 炎 member.
+picks by lineup gain lost to buyScore's merge and engine value. 9 炎 stalled at the 7th real 炎 member although the
+bots owned seven or more 炎 in most late rounds: one-swap climbs never cross from 6 to 9 and the 9 tier counted as one more
+tier; a seed from 调和 plus just enough members and a bonus for that tier (§37.43) lift 杜遥夜 by +2.3, nothing else moves.

@@ -1,0 +1,91 @@
+// §37.42 缪尔赛思 (round56; the maintainer 2026-10-29: 「缪尔赛思除了炎盟约我基本都是到手就卖不留着，这样能提高再次拿到的概率」):
+// outside a focus whose top tier exceeds the deploy cap the bot sells a normal 缪尔赛思 as soon as she arrives (her 变形同构体
+// stays, the copy returns to the pool); the 博士投影 that promotes at once (her strategy's round-1 item) waits for a deployed
+// normal operator of tier ≥ 4, at the latest until the Final Assault prep.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { botPrepBegin, equipItems } from '../../server/match/bot.js';
+import { makeMatch, give, giveItem, legalTileFor, DATA } from './harness.js';
+
+const MLYSS = 'chess_char_6_11_a'; // 缪尔赛思 (her gain brings a 变形同构体)
+const MORPH = 'chess_item_6_09_e_a'; // 变形同构体
+const PROMO_NOW = 'chess_item_5_06_e_b'; // 进阶博士投影 (promotes at once)
+const bots = [{ seat: 0, playerId: 'ai_0', name: 'AI-1', isBot: true, connected: true }];
+
+function setup(t, round = 11) {
+  const h = makeMatch({ mode: 'solo', difficulty: 'ABYSS', seed: 5, seats: bots }).start().toPrep();
+  t.after(() => h.dispose?.());
+  const m = h.m, ps = m.order[0];
+  ps.hand.fill(null);
+  ps.board.clear();
+  ps.bandId = 'band_sarkazb'; // 歌利亚: no strategy bond
+  delete ps._botFocus;
+  delete ps._botFocusId;
+  m.round = round;
+  ps.shop.level = 5;
+  ps.shop.upgradePrice = 100;
+  ps.shop.slots = [];
+  ps.funds = 0;
+  ps.recompute();
+  return { m, ps };
+}
+
+/** Visible members of a core bond that belong to no other core bond, lowest tier first, with copies in the pool. */
+const membersOf = (m, bond, n) => DATA.bonds[bond].visibleMembers.map((id) => DATA.chess[id])
+  .filter((c) => c && m.pool.left(c.chessId) >= 1 && !c.bonds.some((b) => b !== bond && DATA.bonds[b]?.isCore))
+  .sort((a, b) => a.tier - b.tier).slice(0, n);
+const deploy = (m, ps, c) => give(m, ps, c.chessId, 'board', legalTileFor(m, ps, c.chessId));
+const morphs = (ps) => [...ps.hand, ...ps.temp].filter((p) => p && p.id === MORPH).length
+  + ps.allChess().reduce((n, p) => n + (p.items || []).filter((it) => it.id === MORPH).length, 0);
+const owns = (m, ps, id) => ps.allChess().some((p) => m.gd.baseIdOf(p.id) === id);
+
+test('§37.42: outside 炎 a 缪尔赛思 from an offer is sold at once — her 变形同构体 stays, the copy returns to the pool', (t) => {
+  const { m, ps } = setup(t);
+  for (const c of membersOf(m, 'siracusaShip', 5)) deploy(m, ps, c);
+  const left = m.pool.left(MLYSS);
+  ps.pushRewardOffer('merge', { tier: 6, ids: [MLYSS] });
+  botPrepBegin(m, ps);
+  assert.equal(owns(m, ps, MLYSS), false, 'sold');
+  assert.equal(morphs(ps), 1, 'the 变形同构体 she brought stays');
+  assert.equal(m.pool.left(MLYSS), left, 'her copy is back in the pool');
+});
+
+test('§37.42: with 炎 the focus (its top tier 9 exceeds the deploy cap) she stays', (t) => {
+  const { m, ps } = setup(t);
+  for (const c of membersOf(m, 'yanShip', 4)) deploy(m, ps, c);
+  ps.pushRewardOffer('merge', { tier: 6, ids: [MLYSS] });
+  botPrepBegin(m, ps);
+  assert.equal(owns(m, ps, MLYSS), true);
+});
+
+test('§37.42: one that arrives another way (not from an offer) is sold by the item step', (t) => {
+  const { m, ps } = setup(t);
+  for (const c of membersOf(m, 'siracusaShip', 3)) deploy(m, ps, c);
+  give(m, ps, MLYSS, 'hand');
+  equipItems(m, ps);
+  assert.equal(owns(m, ps, MLYSS), false);
+});
+
+test('§37.42: the 博士投影 that promotes at once waits for a deployed tier-4+ normal operator, then promotes it', (t) => {
+  const { m, ps } = setup(t, 2);
+  const low = Object.values(DATA.chess).filter((c) => c.visible && !c.isGolden && c.tier <= 2 && m.pool.left(c.chessId) >= 1).slice(0, 2);
+  for (const c of low) deploy(m, ps, c);
+  giveItem(m, ps, PROMO_NOW, 'hand');
+  equipItems(m, ps);
+  assert.ok(ps.hand.some((p) => p && p.id === PROMO_NOW), 'kept while only tier ≤ 2 operators stand');
+  const t4 = Object.values(DATA.chess).find((c) => c.visible && !c.isGolden && c.tier === 4 && m.pool.left(c.chessId) >= 1);
+  deploy(m, ps, t4);
+  equipItems(m, ps);
+  assert.ok(!ps.hand.some((p) => p && p.id === PROMO_NOW), 'used');
+  assert.ok([...ps.board.values()].some((p) => p.kind === 'chess' && m.gd.isGolden(p.id)), 'an elite on the board');
+});
+
+test('§37.42: in the Final Assault prep the 博士投影 that promotes at once is used on whoever stands', (t) => {
+  const { m, ps } = setup(t);
+  m.round = m.gd.bossRound;
+  const low = Object.values(DATA.chess).filter((c) => c.visible && !c.isGolden && c.tier <= 2 && m.pool.left(c.chessId) >= 1).slice(0, 2);
+  for (const c of low) deploy(m, ps, c);
+  giveItem(m, ps, PROMO_NOW, 'hand');
+  equipItems(m, ps);
+  assert.ok(!ps.hand.some((p) => p && p.id === PROMO_NOW));
+});

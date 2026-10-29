@@ -1924,10 +1924,16 @@ function takeOffers(m, ps, policy = null) {
     });
     if (best < 0) break;
     if (freeSlot(ps.hand) < 0) sellWeakestHand(m, ps, { keepPairs: false });
+    const picked = offer.slots[best];
+    const before = picked.kind === 'chess' && sellOnArrival(m, ps, ctx, picked.id) ? new Set(ps.allChess().map((p) => p.uid)) : null;
     if (!tryDo(() => ps.pickReward(best))) {
       // could not take it (sold out / no room): drop the offer
       ps.offers.shift();
       ps.dirty();
+    } else if (before) {
+      // §37.42: 缪尔赛思 outside 炎 is sold at once (her 变形同构体 stays)
+      const fresh = ps.allChess().find((p) => !before.has(p.uid) && p.id === picked.id);
+      if (fresh && !advisorProtected(m, ps, fresh)) tryDo(() => ps.sell(fresh.uid));
     }
   }
 }
@@ -3123,6 +3129,26 @@ function nineItem(m, ps, id, ctx) {
 const shopItemWanted = (m, ps, id, ctx) => eliteItem(m, ps, id) || dollItem(m, ps, id) || nineItem(m, ps, id, ctx);
 
 /**
+ * §37.42 [ASSUMED] (the maintainer, 2026-10-29: 「缪尔赛思除了炎盟约我基本都是到手就卖不留着，这样能提高再次拿到的概率」): a
+ * normal chess whose gain brings a 变形同构体 (缪尔赛思, garrison SERVER_GAIN_EQUIP) is sold as soon as it arrives — the
+ * 变形同构体 stays, the copy goes back to the pool — unless the focus's top tier exceeds the deploy cap (炎: 调和 and her
+ * conversion make 9, §37.41). An advisor's protected piece stays. Paired 终极 results in docs/history/0.3.4.md §37.42.
+ */
+function bringsMorph(m, ps, id) {
+  const gd = ps?.gd || m.gd;
+  return (chessRec(m, id, ps)?.garrisonIds || []).some((gid) => {
+    const g = gd.garrison(gid);
+    return g?.effectType === 'SERVER_GAIN_EQUIP' && !!gd.item(g.bbStr?.chess)?.canGiveBond;
+  });
+}
+const sellOnArrival = (m, ps, ctx, id) => !(ps.gd || m.gd).isGolden(id) && bringsMorph(m, ps, id) && !(ctx.focus && topAboveCap(m, ps, ctx.focus));
+function sellMorphBringers(m, ps) {
+  if (!ps.allChess().some((p) => bringsMorph(m, ps, p.id))) return;
+  const ctx = context(m, ps);
+  for (const p of ps.allChess()) if (sellOnArrival(m, ps, ctx, p.id) && !advisorProtected(m, ps, p)) tryDo(() => ps.sell(p.uid));
+}
+
+/**
  * §37.41 [ASSUMED]: where a 变形同构体 goes (it grants the bond of a bond item worn with it) — the operator of chooseLineup's set
  * whose granted bond (a worn bond item, or a held one equipped with it) raises lineupScore most beyond the items' own
  * value; null: none gains (the morph then waits for a focus whose top tier needs it, else takes the usual target).
@@ -3319,6 +3345,8 @@ function useArt(m, ps, item, ctx) {
 
 export function equipItems(m, ps) {
   const gd = ps?.gd || m.gd;
+  // §37.42: one that arrived another way (a transformation, a copy, a purchase) is sold here
+  sellMorphBringers(m, ps);
   const tried = new Set();
   // §37.41: a 变形同构体 goes where its granted bond gains most (morphPlan, with the bond item the plan names); without such a
   // carrier it waits for a focus whose top tier needs it (topAboveCap), else the usual target below takes it
@@ -3339,6 +3367,11 @@ export function equipItems(m, ps) {
     const ctx = context(m, ps);
     const rec = gd.item(item.id);
     if (rec && rec.itemType === 'MAGIC') { useArt(m, ps, item, ctx); continue; }
+    // §37.42 [ASSUMED]: the 博士投影 that promotes at once (缪尔赛思's strategy item from round 1, an item merge) waits for a
+    // deployed normal operator of tier ≥ ELITE_ITEM_TIER, at the latest until the Final Assault prep — used on round 1 it
+    // promoted a tier-1 piece. Not when an advisor plans the items.
+    if (itemEffect(rec) === 'use_equip_upgrade_char' && m.round < gd.bossRound && !advisorPlan(m, ps)
+      && ![...ps.board.values()].some((p) => p.kind === 'chess' && !gd.isGolden(p.id) && gd.tierOf(p.id) >= ELITE_ITEM_TIER)) continue;
     // §37.41: one bond item of a focus whose top tier needs 缪尔赛思 waits for her 变形同构体 until the Final Assault prep
     if (!heldNine && isBondItem(gd, item) && rec.giveBondId === ctx.focus && m.round < gd.bossRound && topAboveCap(m, ps, ctx.focus)) {
       heldNine = true;

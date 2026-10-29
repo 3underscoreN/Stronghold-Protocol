@@ -773,3 +773,15 @@ focus (each inside the noise, together +4.3); and the 9 炎 conversion for the o
 cap (杜遥夜 +6.8). 终极 solo 1–320 40.4 → 46.0 % (+5.7 ± 1.8, wins 31 → 44), 职业队 9×80 30.5 → 32.8 % (wins 59 → 79).
 Co-op bundles that differ only slightly swing 2–4 points even on 320 seeds, so co-op keeps only the changes with a
 consistent sign.
+
+### Cycle 14: 缪尔赛思 sold on arrival, the immediate 博士投影 kept for a tier-4 piece (§37.42, round56)
+
+The owner sells 缪尔赛思 at once outside 炎 (her 变形同构体 stays, the copy returns to the pool). For the bots this is neutral:
+they meet her only in the R10–R14 tier-6 merge rewards and took her 8 times in 68, so few games change (solo +0.2, co-op
++1.0, 职业队 0). Farming her for morphs — taking her over the other tier-6 picks, holding morphs, buying the bond item that
+gives one a use — lost: the morphs mostly converted into small bonds, because the focus already stood at its top tier when
+she came. A per-round review of lost games (handoff/diag/review.mjs) found the clear mistake of the round instead: her
+strategy's round-1 item, an advanced 博士投影 that promotes at once, went on a tier-1 piece; kept for a tier-4 piece it lifts
+that strategy from 37.0 to 47.5 % (160 forced seeds, wins 10 → 22). Rehearsal-judged lineup alternatives (a strong bench piece or a whole
+power lineup instead of weak focus members) kept more seats alive but cost solo wins in every version, and late tier-6
+picks by lineup gain lost to buyScore's merge and engine value. Next lever seen: 9 炎 stalls at the 7th real 炎 member.

@@ -123,3 +123,23 @@ test('§37.43: 缪尔赛思 converted and seven 炎 owned — the lineup fields 
   assert.equal(ps.bonds.yanShip.count, 9, '7 炎 + 缪尔赛思 converted + 调和');
   assert.ok([...ps.board.values()].some((p) => p.uid === her.uid), 'she is deployed');
 });
+
+// §37.44 娜仁图亚: her 6 萨尔贡 lends a skill-starting member's equipment (tier ≤ 5) to its 8 neighbours instead of the attack
+// stacks, so the bot buys combat equipment for the 萨尔贡 members (an exception to §37.39) and lets them carry first.
+test('§37.44: with 娜仁图亚 and four 萨尔贡 a tier-3+ combat item is bought for a 萨尔贡 member; another strategy buys none', (t) => {
+  const item = Object.values(DATA.items).find((r) => r.itemType === 'EQUIP' && r.tier === 4 && !r.isGolden && !r.giveBondId && !r.canGiveBond
+    && Array.isArray(r.buffs) && r.buffs.length && !String(r.buffs[0].key).startsWith('use_') && !String(r.buffs[0].key).includes('coin')
+    && !(typeof r.kind === 'string' && r.kind.startsWith('consume')) && r.category !== 'SURVIVAL' && r.price <= 4);
+  for (const [band, want] of [['band_narant', true], ['band_sarkazb', false]]) {
+    const { m, ps } = setup(t, 9);
+    ps.bandId = band;
+    const sargon = membersOf(m, 'sargonShip', 4);
+    for (const c of sargon) deploy(m, ps, c);
+    ps.funds = 6;
+    ps.shop.slots = [{ kind: 'item', id: item.id, basePrice: item.price, sold: false }];
+    botPrepBegin(m, ps);
+    const carrier = ps.allChess().find((p) => (p.items || []).some((it) => it.id === item.id));
+    assert.equal(!!carrier, want, `${band}: ${item.name}`);
+    if (want) assert.ok(m.gd.chess(carrier.id).bonds.includes('sargonShip'), 'worn by a 萨尔贡 member');
+  }
+});

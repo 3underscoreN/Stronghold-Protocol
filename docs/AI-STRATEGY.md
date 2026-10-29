@@ -787,3 +787,6 @@ power lineup instead of weak focus members) kept more seats alive but cost solo 
 picks by lineup gain lost to buyScore's merge and engine value. 9 炎 stalled at the 7th real 炎 member although the
 bots owned seven or more 炎 in most late rounds: one-swap climbs never cross from 6 to 9 and the 9 tier counted as one more
 tier; a seed from 调和 plus just enough members and a bonus for that tier (§37.43) lift 杜遥夜 by +2.3, nothing else moves.
+A forced sweep of the weak strategies then found the second clear mistake: 娜仁图亚 replaces the 6 萨尔贡 tier with lending a
+skill-starting member's equipment, and §37.39 left the bots with nothing to lend; buying combat items for the 萨尔贡 members
+lifts it from 24.4 to 31.4 % (§37.44). Strategy effects the bots ignore are the cheapest gains left.

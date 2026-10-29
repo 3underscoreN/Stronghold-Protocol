@@ -3144,7 +3144,32 @@ function nineItem(m, ps, id, ctx) {
 }
 
 /** §37.41: the shop items bought despite §37.39 (ahead of the refreshes, WANTED_ITEM). */
-const shopItemWanted = (m, ps, id, ctx) => eliteItem(m, ps, id) || dollItem(m, ps, id) || nineItem(m, ps, id, ctx);
+const shopItemWanted = (m, ps, id, ctx) => eliteItem(m, ps, id) || dollItem(m, ps, id) || nineItem(m, ps, id, ctx) || lendItem(m, ps, id, ctx);
+
+/**
+ * §37.44: the item tier up to which the strategy turns the focus bond's top tier into lending a skill-starting member's
+ * equipment to its 8 neighbours (娜仁图亚's 6 萨尔贡: a bond buff with `valid_in_band` and `filter_item_level`), else 0.
+ */
+function lendsEquipment(m, ps, bond) {
+  const rec = bond ? (ps.gd || m.gd).bond(bond) : null;
+  const b = (rec?.buffs || []).find((x) => x?.bbStr?.valid_in_band === ps.bandId && Number(x.bb?.filter_item_level) > 0);
+  return b ? Number(b.bb.filter_item_level) : 0;
+}
+/**
+ * §37.44 [ASSUMED]: with such a strategy and LEND_MEMBERS owned members of the focus, a combat item of tier ≥ LEND_TIER up to
+ * the lent tier is bought for a deployed member with a free slot (§37.39 left that top tier without equipment to lend).
+ */
+const LEND_MEMBERS = 4;
+const LEND_TIER = 3;
+function lendItem(m, ps, id, ctx) {
+  const lent = lendsEquipment(m, ps, ctx.focus);
+  if (!lent || (ctx.owned.counts.get(ctx.focus) || 0) < LEND_MEMBERS) return false;
+  const gd = ps.gd || m.gd, rec = gd.item(id);
+  if (!rec || rec.itemType !== 'EQUIP' || rec.tier < LEND_TIER || rec.tier > lent || rec.giveBondId || rec.canGiveBond) return false;
+  const key = itemEffect(rec);
+  if ((typeof rec.kind === 'string' && rec.kind.startsWith('consume')) || !key || key.startsWith('use_') || key.includes('coin')) return false;
+  return [...ps.board.values()].some((p) => p.kind === 'chess' && (chessRec(m, p.id, ps)?.bonds || []).includes(ctx.focus) && slotFree(m, ps, p, rec));
+}
 
 /**
  * §37.42 [ASSUMED] (the maintainer, 2026-10-29: 「缪尔赛思除了炎盟约我基本都是到手就卖不留着，这样能提高再次拿到的概率」): a
@@ -3319,6 +3344,11 @@ export function itemTarget(m, ps, item, ctx = context(m, ps), usePlan = true) {
   let order = rec.category === 'SURVIVAL'
     ? [...list.filter(blocker), ...list.filter((p) => !blocker(p) && dealer(p)), ...list.filter((p) => !blocker(p) && !dealer(p))]
     : [...list.filter(dealer), ...list.filter((p) => !dealer(p))];
+  // §37.44: a strategy that lends the focus members' equipment (娜仁图亚) — they carry first
+  if (lendsEquipment(m, ps, ctx.focus)) {
+    const mem = (p) => (chessRec(m, p.id, ps)?.bonds || []).includes(ctx.focus);
+    order = [...order.filter(mem), ...order.filter((p) => !mem(p))];
+  }
   // §37.37 [ASSUMED] 维多利亚 raises the damage of its members that carry equipment ("携带装备的【维多利亚】干员造成的伤害提升"):
   // with it the active focus, they come first for everything but survival items
   if (ctx.focus === 'victoriaShip' && ps.bonds.victoriaShip?.active && rec.category !== 'SURVIVAL') {
